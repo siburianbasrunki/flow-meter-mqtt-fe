@@ -1,0 +1,188 @@
+/* ── App shell with sidebar ── */
+.app-shell {
+  display: flex;
+  flex-direction: row;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* override Dashboard width/height so it fits inside .app-content */
+.app-content .dashboard {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Sidebar ── */
+.app-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: #0f172a;
+  color: #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #1e293b;
+}
+
+.sidebar-brand {
+  padding: 16px 16px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #1e293b;
+}
+.sidebar-brand-logo {
+  width: 36px; height: 36px;
+  background: #1e3a8a22;
+  border: 1px solid #1e40af55;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+.sidebar-brand-title { font-size: 13px; font-weight: 700; color: #f8fafc; line-height: 1.2; }
+.sidebar-brand-sub { font-size: 10.5px; color: #94a3b8; margin-top: 2px; }
+
+.sidebar-nav {
+  flex: 1;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 6px;
+  color: #cbd5e1;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+}
+.sidebar-link:hover {
+  background: #1e293b;
+  color: #f8fafc;
+}
+.sidebar-link-active {
+  background: #1d4ed8;
+  color: #fff;
+}
+.sidebar-link-active:hover {
+  background: #1e40af;
+}
+.sidebar-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+
+.sidebar-footer {
+  padding: 10px 16px;
+  border-top: 1px solid #1e293b;
+  font-size: 10.5px;
+  color: #64748b;
+}
+.sidebar-footer-row { display: flex; align-items: center; gap: 6px; }
+.sidebar-footer-dot {
+  width: 6px; height: 6px;
+  background: #22c55e;
+  border-radius: 50%;
+  box-shadow: 0 0 6px #22c55e88;
+}
+
+/* ── Indonesia 3D Map page ── */
+.indonesia-map-page {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: #0b1220;
+  color: #e2e8f0;
+}
+.indonesia-map-header {
+  padding: 14px 22px;
+  border-bottom: 1px solid #1e293b;
+  background: linear-gradient(180deg, #0f172a 0%, #0b1220 100%);
+}
+.indonesia-map-header h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: 0.2px;
+}
+.indonesia-map-header p {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+.indonesia-map-stage {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  background: #0b1220;
+}
+.indonesia-map-wrap {
+  position: absolute;
+  inset: 0;
+}
+.indonesia-map-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+.indonesia-map-canvas:active { cursor: grabbing; }
+.indonesia-map-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #cbd5e1;
+  font-size: 13px;
+  background: rgba(11, 18, 32, 0.6);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.indonesia-map-error {
+  color: #fca5a5;
+}
+.indonesia-map-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #1e293b;
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: indo-spin 0.9s linear infinite;
+}
+@keyframes indo-spin { to { transform: rotate(360deg); } }
+.indonesia-map-hint {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  color: #cbd5e1cc;
+  background: rgba(15, 23, 42, 0.55);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #1e293b99;
+  pointer-events: none;
+}
