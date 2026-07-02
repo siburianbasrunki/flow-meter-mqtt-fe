@@ -1,0 +1,652 @@
+/* ── Flow Meter Dashboard · SCADA / Operational Style (Light) ── */
+:root {
+  --scada-bg:        #eef1f5;
+  --scada-surface:   #ffffff;
+  --scada-surface-2: #f6f8fa;
+  --scada-surface-3: #eef2f6;
+  --scada-border:    #e1e6ec;
+  --scada-border-2:  #c4ccd5;
+  --scada-text:      #1f2937;
+  --scada-text-2:    #475569;
+  --scada-muted:     #64748b;
+  --scada-dim:       #94a3b8;
+  --scada-green:     #16a34a;
+  --scada-amber:     #d97706;
+  --scada-red:       #dc2626;
+  --scada-cyan:      #0891b2;
+  --scada-blue:      #1d4ed8;
+  --scada-orange:    #ea580c;
+  --scada-purple:    #7c3aed;
+  --mono: "JetBrains Mono", "IBM Plex Mono", "Menlo", "Consolas", monospace;
+}
+
+.fm-dashboard {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--scada-bg);
+  background-image:
+    linear-gradient(rgba(8, 145, 178, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(8, 145, 178, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--scada-text);
+  overflow: hidden;
+  font-size: 13px;
+  font-family: var(--mono);
+}
+.fm-mono { font-family: var(--mono); }
+.fm-num { text-align: right; font-variant-numeric: tabular-nums; }
+.fm-muted { color: var(--scada-muted); }
+
+/* Header */
+.fm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  height: 40px;
+  background: var(--scada-surface);
+  border-bottom: 1px solid var(--scada-border-2);
+  flex-shrink: 0;
+}
+.fm-header-left { display: flex; align-items: center; gap: 10px; }
+.fm-header-logo {
+  width: 24px; height: 24px;
+  background: var(--scada-surface-2);
+  border: 1px solid var(--scada-border-2);
+  display: flex; align-items: center; justify-content: center;
+}
+.fm-header-logo svg { stroke: var(--scada-cyan); }
+.fm-header-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--scada-text);
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+}
+.fm-header-sub {
+  font-size: 9.5px;
+  color: var(--scada-muted);
+  margin-top: 1px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.fm-header-right { display: flex; align-items: center; gap: 8px; }
+.fm-status-pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--scada-border-2);
+  background: var(--scada-surface-2);
+  color: var(--scada-text-2);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.fm-status-dot {
+  width: 7px; height: 7px;
+  background: var(--status-color);
+  border-radius: 50%;
+  box-shadow: 0 0 5px var(--status-color);
+  animation: fm-led 2s ease-in-out infinite;
+}
+@keyframes fm-led {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* KPI row */
+.fm-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  background: var(--scada-surface);
+  border-bottom: 1px solid var(--scada-border-2);
+  flex-shrink: 0;
+}
+.fm-kpi {
+  display: block;
+  border-right: 1px solid var(--scada-border);
+  padding: 10px 14px;
+  position: relative;
+}
+.fm-kpi:last-child { border-right: none; }
+.fm-kpi::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--kpi-color);
+}
+.fm-kpi-bar { display: none; }
+.fm-kpi-body { padding: 0; }
+.fm-kpi-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--scada-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.fm-kpi-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--kpi-color);
+  font-family: var(--mono);
+  margin-top: 3px;
+}
+.fm-kpi-hint {
+  font-size: 9.5px;
+  color: var(--scada-dim);
+  margin-top: 2px;
+  text-transform: lowercase;
+  letter-spacing: 0.3px;
+}
+@media (max-width: 1000px) {
+  .fm-kpi-row { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Main 2-column */
+.fm-main {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+@media (max-width: 900px) {
+  .fm-main { grid-template-columns: 1fr; }
+}
+
+/* FM list panel */
+.fm-list-panel {
+  background: var(--scada-surface);
+  border-right: 1px solid var(--scada-border-2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.fm-panel-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--scada-cyan);
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--scada-border-2);
+  background: var(--scada-surface-2);
+}
+.fm-panel-title::before { content: "[ "; color: var(--scada-dim); }
+.fm-panel-title::after { content: " ]"; color: var(--scada-dim); }
+
+.fm-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+.fm-list-empty {
+  padding: 16px;
+  text-align: left;
+  font-size: 10.5px;
+  color: var(--scada-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.fm-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--scada-border);
+  border-left: 3px solid transparent;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--scada-text);
+  width: 100%;
+  position: relative;
+}
+.fm-list-item:hover {
+  background: var(--scada-surface-2);
+}
+.fm-list-item-active {
+  background: var(--scada-surface-3);
+  border-left-color: var(--scada-cyan);
+}
+.fm-list-id {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--scada-cyan);
+  font-family: var(--mono);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.4px;
+}
+.fm-list-led {
+  width: 6px; height: 6px;
+  background: var(--scada-green);
+  border-radius: 50%;
+  box-shadow: 0 0 4px var(--scada-green);
+}
+.fm-list-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--scada-muted);
+}
+.fm-list-tota {
+  color: var(--scada-text-2);
+  font-family: var(--mono);
+}
+
+/* Detail panel */
+.fm-detail-panel {
+  background: var(--scada-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overflow-y: auto;
+}
+.fm-detail-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--scada-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Compact title bar */
+.fm-tbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--scada-border-2);
+  background: var(--scada-surface);
+  flex-shrink: 0;
+  font-size: 11.5px;
+}
+.fm-tbar-id {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--scada-cyan);
+  font-family: var(--mono);
+  letter-spacing: 0.6px;
+}
+.fm-tbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--scada-text-2);
+}
+.fm-tbar-sep { color: var(--scada-dim); }
+.fm-tbar-spacer { flex: 1; }
+.fm-tbar-time {
+  font-size: 11px;
+  color: var(--scada-text);
+  letter-spacing: 0.4px;
+}
+
+/* Hero row split: totalisator + kenaikan terakhir */
+.fm-hero-row {
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  background: var(--scada-surface);
+  border-bottom: 1px solid var(--scada-border-2);
+  flex-shrink: 0;
+}
+.fm-hero-cell {
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: relative;
+}
+.fm-hero-cell::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  width: 6px;
+  height: 6px;
+  background: var(--scada-green);
+  border-radius: 50%;
+  box-shadow: 0 0 5px var(--scada-green);
+  animation: fm-led 1.4s ease-in-out infinite;
+}
+.fm-hero-cell-secondary::before {
+  background: var(--scada-purple);
+  box-shadow: 0 0 5px var(--scada-purple);
+}
+.fm-hero-divider {
+  background: var(--scada-border-2);
+}
+.fm-hero-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--scada-muted);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.fm-hero-value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.fm-hero-number {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--scada-orange);
+  font-family: var(--mono);
+  letter-spacing: -0.3px;
+}
+.fm-hero-cell-secondary .fm-hero-number {
+  color: var(--scada-purple);
+}
+.fm-hero-increment {
+  color: var(--scada-purple) !important;
+}
+.fm-hero-unit {
+  font-size: 12px;
+  color: var(--scada-muted);
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+.fm-hero-sub {
+  font-size: 10px;
+  color: var(--scada-dim);
+  margin-top: 3px;
+  letter-spacing: 0.4px;
+}
+
+/* Chart section */
+.fm-chart-section {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--scada-border-2);
+  background: var(--scada-surface);
+  flex-shrink: 0;
+}
+.fm-chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.fm-chart-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--scada-cyan);
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+}
+.fm-chart-title::before { content: "[ "; color: var(--scada-dim); }
+.fm-chart-title::after { content: " ]"; color: var(--scada-dim); }
+.fm-chart-meta {
+  font-size: 9.5px;
+  color: var(--scada-dim);
+  font-family: var(--mono);
+  letter-spacing: 0.4px;
+}
+.fm-chart-wrap {
+  width: 100%;
+  background: var(--scada-surface);
+  border: 1px solid var(--scada-border-2);
+  padding: 6px;
+}
+
+/* Range filter bar */
+.fm-range-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 0 10px;
+  border-bottom: 1px dashed var(--scada-border);
+  margin-bottom: 8px;
+}
+.fm-range-pills {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--scada-surface-2);
+  border: 1px solid var(--scada-border);
+}
+.fm-range-pill {
+  padding: 3px 10px;
+  font-size: 10px;
+  font-family: var(--mono);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--scada-text-2);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.fm-range-pill:hover {
+  background: var(--scada-surface);
+  color: var(--scada-text);
+}
+.fm-range-pill-active,
+.fm-range-pill-active:hover {
+  background: var(--scada-cyan);
+  color: #fff;
+}
+.fm-range-custom {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+}
+.fm-range-label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 10px;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--scada-muted);
+}
+.fm-range-input {
+  padding: 3px 6px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--scada-text);
+  background: var(--scada-surface);
+  border: 1px solid var(--scada-border-2);
+  outline: none;
+}
+.fm-range-input:focus {
+  border-color: var(--scada-cyan);
+}
+.fm-range-error {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--scada-red);
+  letter-spacing: 0.4px;
+}
+.fm-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.fm-chart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px;
+  color: var(--scada-dim);
+  font-size: 10.5px;
+  background: var(--scada-surface-2);
+  border: 1px solid var(--scada-border-2);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.fm-chart-empty svg { stroke: var(--scada-dim); }
+
+/* Transactions section */
+.fm-tx-section {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--scada-border-2);
+  background: var(--scada-surface);
+  flex-shrink: 0;
+}
+.fm-tx-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.fm-tx-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--scada-cyan);
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+}
+.fm-tx-title::before { content: "[ "; color: var(--scada-dim); }
+.fm-tx-title::after { content: " ]"; color: var(--scada-dim); }
+.fm-tx-meta {
+  font-size: 9.5px;
+  color: var(--scada-dim);
+  font-family: var(--mono);
+}
+.fm-tx-empty {
+  padding: 18px;
+  background: var(--scada-surface-2);
+  border: 1px solid var(--scada-border-2);
+  font-size: 10.5px;
+  color: var(--scada-dim);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.fm-tx-table-wrap {
+  width: 100%;
+  border: 1px solid var(--scada-border-2);
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--scada-surface);
+}
+.fm-tx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.fm-tx-table thead {
+  position: sticky;
+  top: 0;
+  background: var(--scada-surface-2);
+  z-index: 1;
+}
+.fm-tx-table th {
+  text-align: left;
+  font-weight: 700;
+  color: var(--scada-cyan);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--scada-border-2);
+}
+.fm-tx-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--scada-border);
+  color: var(--scada-text);
+}
+.fm-tx-table tr:nth-child(even) td {
+  background: var(--scada-surface-2);
+}
+.fm-tx-table tr:hover td {
+  background: var(--scada-surface-3);
+}
+.fm-tx-ongoing td {
+  background: rgba(22, 163, 74, 0.08) !important;
+}
+.fm-tx-ongoing:hover td {
+  background: rgba(22, 163, 74, 0.14) !important;
+}
+.fm-tx-pulse {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: var(--scada-green);
+  border-radius: 50%;
+  margin-left: 6px;
+  vertical-align: middle;
+  animation: fm-pulse 1.2s ease-in-out infinite;
+  box-shadow: 0 0 4px var(--scada-green);
+}
+@keyframes fm-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.4); }
+}
+.fm-tx-increment {
+  font-weight: 700;
+  color: var(--scada-orange);
+}
+
+/* Footer */
+.fm-footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 5px 16px;
+  background: var(--scada-surface);
+  border-top: 1px solid var(--scada-border-2);
+  font-size: 9.5px;
+  color: var(--scada-muted);
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.fm-footer code {
+  background: var(--scada-surface-2);
+  padding: 1px 6px;
+  font-size: 9.5px;
+  color: var(--scada-cyan);
+  border: 1px solid var(--scada-border-2);
+  font-family: var(--mono);
+  text-transform: none;
+}
+.fm-footer-time {
+  margin-left: auto;
+  font-family: var(--mono);
+  color: var(--scada-text-2);
+  text-transform: none;
+}
+
+/* Scrollbars */
+.fm-list::-webkit-scrollbar,
+.fm-tx-table-wrap::-webkit-scrollbar,
+.fm-detail-panel::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.fm-list::-webkit-scrollbar-track,
+.fm-tx-table-wrap::-webkit-scrollbar-track,
+.fm-detail-panel::-webkit-scrollbar-track {
+  background: var(--scada-surface-2);
+}
+.fm-list::-webkit-scrollbar-thumb,
+.fm-tx-table-wrap::-webkit-scrollbar-thumb,
+.fm-detail-panel::-webkit-scrollbar-thumb {
+  background: var(--scada-border-2);
+  border-radius: 0;
+}
+.fm-list::-webkit-scrollbar-thumb:hover,
+.fm-tx-table-wrap::-webkit-scrollbar-thumb:hover,
+.fm-detail-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--scada-dim);
+}
