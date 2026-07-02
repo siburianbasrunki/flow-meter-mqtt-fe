@@ -2,13 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface FlowMeterPayload {
   datetime: string;
+  timezone?: string | null;
   totalisator: number;
+  pulse?: number | null;
+  pulseEQEP?: number | null;
+  flow_rate?: number | null;
   fm_id: string;
-  slocn?: string;
-  plant_id?: string;
-  company?: string;
-  fuel_level?: number;
+  slocn?: string | null;
+  plant_id?: string | null;
+  company?: string | null;
+  fuel_level?: number | null;
   received_at?: string;
+  receivedAt?: string;
   topic?: string;
   [k: string]: unknown;
 }
