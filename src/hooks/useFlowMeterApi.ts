@@ -74,7 +74,7 @@ export function useFlowMeterApi(): UseFlowMeterApiReturn {
       esRef.current.close();
     }
 
-    const baseUrl = config.baseUrl.replace(/\/$/, "");
+    const baseUrl = normalizeBaseUrl(config.baseUrl);
     setApiUrl(baseUrl);
     setStatus("connecting");
 
@@ -154,6 +154,19 @@ export function useFlowMeterApi(): UseFlowMeterApiReturn {
   }, []);
 
   return { status, messages, latestMessage, connect, disconnect, apiUrl };
+}
+
+/**
+ * Normalize baseUrl: strip trailing slash, prepend `https://` kalau
+ * protocol missing. Melindungi dari env var yg lupa `https://` — kalau
+ * gak, browser treat sbg relative URL dan prepend origin sendiri
+ * (mis. jadi `https://vercel-app.vercel.app/api-domain.com/...`).
+ */
+function normalizeBaseUrl(raw: string): string {
+  const trimmed = raw.replace(/\/$/, "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
 }
 
 /**

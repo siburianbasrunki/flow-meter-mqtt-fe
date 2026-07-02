@@ -4,9 +4,17 @@ import "./history.css";
 
 const COMPANY = "PT Putra Perkasa Abadi";
 
-const API_URL =
+function normalizeBaseUrl(raw: string): string {
+  const trimmed = raw.replace(/\/$/, "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+const API_URL = normalizeBaseUrl(
   (import.meta as unknown as { env: Record<string, string> }).env
-    ?.VITE_FLOW_METER_API_URL ?? "http://localhost:3020";
+    ?.VITE_FLOW_METER_API_URL ?? "http://localhost:3020",
+);
 
 type RangeMode = "live" | "1h" | "6h" | "24h" | "7d" | "custom";
 const PRESET_HOURS: Record<Exclude<RangeMode, "live" | "custom">, number> = {
