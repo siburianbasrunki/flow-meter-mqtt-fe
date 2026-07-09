@@ -230,7 +230,7 @@ export default function FuelConsumptionBaPage() {
             </svg>
           </div>
           <div>
-            <h1 className="fcba-header-title">Fuel Consumption · BA (CAT777)</h1>
+            <h1 className="fcba-header-title">Fuel Consumption · BA (CAT777 &amp; HD785)</h1>
             <p className="fcba-header-sub">{COMPANY} · SPT Dashboard</p>
           </div>
         </div>
@@ -295,6 +295,13 @@ export default function FuelConsumptionBaPage() {
                         style={{ background: fuelColor(u.fuelLevel) }}
                       />
                       {u.cn}
+                      {u.deviceType && (
+                        <span
+                          className={`fcba-list-type fcba-type-${u.deviceType}`}
+                        >
+                          {u.deviceType.toUpperCase()}
+                        </span>
+                      )}
                     </div>
                     <div className="fcba-list-meta">
                       <span className="fcba-mono">
@@ -320,6 +327,13 @@ export default function FuelConsumptionBaPage() {
             <>
               <div className="fcba-tbar">
                 <div className="fcba-tbar-id">{selected.cn}</div>
+                {selected.deviceType && (
+                  <span
+                    className={`fcba-tbar-badge fcba-type-${selected.deviceType}`}
+                  >
+                    {selected.deviceType.toUpperCase()}
+                  </span>
+                )}
                 <div className="fcba-tbar-meta">
                   <span className="fcba-mono">
                     {selected.sn ? `SN ${selected.sn}` : ""}
@@ -594,30 +608,71 @@ function StatCard({ label, value, hint, color }: StatCardProps) {
 }
 
 interface ScaleToggleProps {
-  mode: "auto" | "fixed";
-  onChange: (m: "auto" | "fixed") => void;
+  mode: "auto" | "fixed" | "custom";
+  onChange: (m: "auto" | "fixed" | "custom") => void;
+  customMin: string;
+  customMax: string;
+  onCustomMinChange: (v: string) => void;
+  onCustomMaxChange: (v: string) => void;
 }
-function ScaleToggle({ mode, onChange }: ScaleToggleProps) {
+function ScaleToggle({
+  mode,
+  onChange,
+  customMin,
+  customMax,
+  onCustomMinChange,
+  onCustomMaxChange,
+}: ScaleToggleProps) {
   return (
-    <div className="fcba-scale-toggle">
-      <button
-        type="button"
-        className={`fcba-scale-btn${
-          mode === "auto" ? " fcba-scale-btn-active" : ""
-        }`}
-        onClick={() => onChange("auto")}
-      >
-        Auto
-      </button>
-      <button
-        type="button"
-        className={`fcba-scale-btn${
-          mode === "fixed" ? " fcba-scale-btn-active" : ""
-        }`}
-        onClick={() => onChange("fixed")}
-      >
-        0–100
-      </button>
+    <div className="fcba-scale-wrap">
+      <div className="fcba-scale-toggle">
+        <button
+          type="button"
+          className={`fcba-scale-btn${
+            mode === "auto" ? " fcba-scale-btn-active" : ""
+          }`}
+          onClick={() => onChange("auto")}
+        >
+          Auto
+        </button>
+        <button
+          type="button"
+          className={`fcba-scale-btn${
+            mode === "fixed" ? " fcba-scale-btn-active" : ""
+          }`}
+          onClick={() => onChange("fixed")}
+        >
+          0–100
+        </button>
+        <button
+          type="button"
+          className={`fcba-scale-btn${
+            mode === "custom" ? " fcba-scale-btn-active" : ""
+          }`}
+          onClick={() => onChange("custom")}
+        >
+          Custom
+        </button>
+      </div>
+      {mode === "custom" && (
+        <div className="fcba-scale-custom">
+          <input
+            type="number"
+            className="fcba-scale-input"
+            value={customMin}
+            onChange={(e) => onCustomMinChange(e.target.value)}
+            placeholder="min"
+          />
+          <span className="fcba-scale-sep">–</span>
+          <input
+            type="number"
+            className="fcba-scale-input"
+            value={customMax}
+            onChange={(e) => onCustomMaxChange(e.target.value)}
+            placeholder="max"
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -681,13 +736,33 @@ function MetricChart({
   fixedScale,
   defaultScaleMode = "fixed",
 }: MetricChartProps) {
-  const [scaleMode, setScaleMode] = useState<"auto" | "fixed">(
+  const [scaleMode, setScaleMode] = useState<"auto" | "fixed" | "custom">(
     defaultScaleMode,
   );
-  const effectiveYMin =
-    fixedScale && scaleMode === "fixed" ? fixedScale.yMin : yMinOverride;
-  const effectiveYMax =
-    fixedScale && scaleMode === "fixed" ? fixedScale.yMax : yMaxOverride;
+  const [customMin, setCustomMin] = useState<string>(
+    fixedScale ? String(fixedScale.yMin) : "0",
+  );
+  const [customMax, setCustomMax] = useState<string>(
+    fixedScale ? String(fixedScale.yMax) : "100",
+  );
+
+  let effectiveYMin: number | undefined = yMinOverride;
+  let effectiveYMax: number | undefined = yMaxOverride;
+  if (fixedScale && scaleMode === "fixed") {
+    effectiveYMin = fixedScale.yMin;
+    effectiveYMax = fixedScale.yMax;
+  } else if (fixedScale && scaleMode === "custom") {
+    const parsedMin = parseFloat(customMin);
+    const parsedMax = parseFloat(customMax);
+    if (
+      Number.isFinite(parsedMin) &&
+      Number.isFinite(parsedMax) &&
+      parsedMin < parsedMax
+    ) {
+      effectiveYMin = parsedMin;
+      effectiveYMax = parsedMax;
+    }
+  }
   const points = useMemo(() => {
     // Data comes newest-first; reverse for oldest→newest chart axis
     const asc = [...data].reverse();
@@ -705,7 +780,14 @@ function MetricChart({
         <div className="fcba-metric-head">
           <div className="fcba-metric-title">{title}</div>
           {fixedScale && (
-            <ScaleToggle mode={scaleMode} onChange={setScaleMode} />
+            <ScaleToggle
+              mode={scaleMode}
+              onChange={setScaleMode}
+              customMin={customMin}
+              customMax={customMax}
+              onCustomMinChange={setCustomMin}
+              onCustomMaxChange={setCustomMax}
+            />
           )}
         </div>
         <div className="fcba-chart-empty">
@@ -764,7 +846,14 @@ function MetricChart({
       <div className="fcba-metric-head">
         <div className="fcba-metric-title">{title}</div>
         {fixedScale && (
-          <ScaleToggle mode={scaleMode} onChange={setScaleMode} />
+          <ScaleToggle
+            mode={scaleMode}
+            onChange={setScaleMode}
+            customMin={customMin}
+            customMax={customMax}
+            onCustomMinChange={setCustomMin}
+            onCustomMaxChange={setCustomMax}
+          />
         )}
       </div>
       <svg

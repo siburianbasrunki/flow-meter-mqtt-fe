@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface FuelConsumptionBaPayload {
+  deviceType?: "cat777" | "hd785" | string | null;
   cn: string;
   sn?: string | null;
   dateTime: string;
@@ -51,6 +52,30 @@ export interface FuelConsumptionBaPayload {
   vimsEnh?: number | null;
   vimsPing?: number | null;
   vimsCyc?: number | null;
+
+  // HD785-specific
+  gradient?: number | null;
+  hydraulicOilTemp?: number | null;
+  engineOilTemp?: number | null;
+  blowByPressure?: number | null;
+  alternatorVoltage?: number | null;
+  keyOn?: number | null;
+  emptyVehicleWeight?: number | null;
+  calcWeight?: number | null;
+  bodyFloat?: number | null;
+  bodySeating?: number | null;
+  vehicleState?: number | null;
+  vehicleStateMain?: number | null;
+  retarderOn?: number | null;
+  footBrakePosition?: number | null;
+  rearBrakeOilPressure?: number | null;
+  transmissionInputSpeed?: number | null;
+  boostTemp?: number | null;
+  tcOutputTorque?: number | null;
+  fuelInjection?: number | null;
+  liveWeightDisp?: number | null;
+  engineRunTime?: number | null;
+  engineSpeedPrev?: number | null;
 
   receivedAt?: string;
   topic?: string;

@@ -250,6 +250,24 @@
   color: var(--scada-green);
   font-weight: 600;
 }
+.hist-type-badge {
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  border: 1px solid;
+  font-family: var(--mono);
+}
+.hist-type-cat777 {
+  color: #ea580c;
+  background: rgba(234, 88, 12, 0.08);
+  border-color: rgba(234, 88, 12, 0.3);
+}
+.hist-type-hd785 {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.08);
+  border-color: rgba(124, 58, 237, 0.3);
+}
 .hist-empty {
   text-align: center !important;
   padding: 40px !important;

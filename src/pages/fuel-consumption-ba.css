@@ -212,6 +212,31 @@
 .fcba-list-rate {
   color: var(--scada-muted);
 }
+.fcba-list-type {
+  padding: 1px 5px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  border: 1px solid;
+}
+.fcba-tbar-badge {
+  padding: 2px 8px;
+  font-size: 9.5px;
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  border: 1px solid;
+}
+.fcba-type-cat777 {
+  color: #ea580c;
+  background: rgba(234, 88, 12, 0.08);
+  border-color: rgba(234, 88, 12, 0.3);
+}
+.fcba-type-hd785 {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.08);
+  border-color: rgba(124, 58, 237, 0.3);
+}
 
 /* Detail panel */
 .fcba-detail-panel {
@@ -483,12 +508,41 @@
   text-transform: uppercase;
   letter-spacing: 0.8px;
 }
+.fcba-scale-wrap {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
 .fcba-scale-toggle {
   display: inline-flex;
   gap: 2px;
   padding: 2px;
   background: var(--scada-surface);
   border: 1px solid var(--scada-border);
+}
+.fcba-scale-custom {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.fcba-scale-input {
+  width: 56px;
+  padding: 3px 6px;
+  font-size: 10.5px;
+  font-family: var(--mono);
+  color: var(--scada-text);
+  background: var(--scada-surface);
+  border: 1px solid var(--scada-border-2);
+  outline: none;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.fcba-scale-input:focus {
+  border-color: var(--scada-cyan);
+}
+.fcba-scale-sep {
+  color: var(--scada-muted);
+  font-size: 11px;
 }
 .fcba-scale-btn {
   padding: 2px 8px;

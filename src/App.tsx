@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import MainLayout from "./layouts/MainLayout";
 import FlowMeterPage from "./pages/FlowMeterPage";
 import FuelConsumptionBaPage from "./pages/FuelConsumptionBaPage";
+import HistoryFcbaPage from "./pages/HistoryFcbaPage";
 import HistoryPage from "./pages/HistoryPage";
 import IndonesiaMapPage from "./pages/IndonesiaMapPage";
 import "./dashboard.css";
@@ -19,6 +20,7 @@ function App() {
             element={<FuelConsumptionBaPage />}
           />
           <Route path="/history" element={<HistoryPage />} />
+          <Route path="/history-fcba" element={<HistoryFcbaPage />} />
           <Route path="/indonesia-map" element={<IndonesiaMapPage />} />
         </Route>
       </Routes>
