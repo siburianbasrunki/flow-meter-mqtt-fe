@@ -133,6 +133,9 @@ export default function Fs02Page() {
           gridTemplateColumns: "1fr 380px",
           gap: 12,
           padding: 12,
+          flex: 1,
+          minHeight: 0,
+          overflow: "auto",
         }}
       >
         {/* Chart */}
@@ -283,15 +286,23 @@ function TotalizerChart({ history }: { history: Fs02Health[] }) {
 
   if (points.length < 2) {
     return (
-      <div className="fm-chart-empty">
-        <p>Belum cukup data untuk chart (butuh ≥2 point)</p>
+      <div
+        style={{
+          padding: 40,
+          textAlign: "center",
+          color: "var(--scada-dim)",
+          fontSize: 12,
+          fontFamily: "var(--mono)",
+        }}
+      >
+        Belum cukup data untuk chart (butuh ≥2 point)
       </div>
     );
   }
 
-  const W = 900;
-  const H = 260;
-  const PAD = { top: 16, right: 60, bottom: 44, left: 16 };
+  const W = 720;
+  const H = 232;
+  const PAD = { top: 16, right: 72, bottom: 48, left: 12 };
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;
 
@@ -312,23 +323,46 @@ function TotalizerChart({ history }: { history: Fs02Health[] }) {
   const yScale = (v: number) =>
     PAD.top + innerH - ((v - yMin) / yRange) * innerH;
 
+  // Step path — horizontal hold, vertical step tiap kenaikan (sama kayak FlowMeter)
   const path = points
     .map((p, i) => {
       const x = xScale(p.t);
       const y = yScale(p.v);
-      return i === 0 ? `M ${x.toFixed(1)} ${y.toFixed(1)}` : `L ${x.toFixed(1)} ${y.toFixed(1)}`;
+      if (i === 0) return `M ${x.toFixed(1)} ${y.toFixed(1)}`;
+      const yPrev = yScale(points[i - 1].v);
+      return `L ${x.toFixed(1)} ${yPrev.toFixed(1)} L ${x.toFixed(1)} ${y.toFixed(1)}`;
     })
     .join(" ");
 
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin + (yRange * i) / 4);
+  const N = 5;
   const xTickTimes = Array.from(
-    { length: 6 },
-    (_, k) => tMin + (tRange * k) / 5,
+    { length: N },
+    (_, k) => tMin + (tRange * k) / (N - 1),
   );
 
+  // Adaptif — kalau range kecil tapi angka jutaan, pakai notasi compact
+  // (mis. "9.8166M" instead of "9816655.92") biar label kebaca.
   const fmtY = (v: number): string => {
-    if (yRange < 1) return v.toFixed(3);
-    if (yRange < 100) return v.toFixed(1);
+    const abs = Math.abs(v);
+    if (abs >= 1_000_000) {
+      const scaled = v / 1_000_000;
+      const rangeScaled = yRange / 1_000_000;
+      let d = 1;
+      if (rangeScaled < 0.001) d = 4;
+      else if (rangeScaled < 0.01) d = 3;
+      else if (rangeScaled < 0.1) d = 2;
+      return scaled.toFixed(d) + "M";
+    }
+    if (abs >= 1_000) {
+      const scaled = v / 1_000;
+      const rangeScaled = yRange / 1_000;
+      let d = 1;
+      if (rangeScaled < 0.01) d = 3;
+      else if (rangeScaled < 0.1) d = 2;
+      return scaled.toFixed(d) + "K";
+    }
+    if (yRange < 1) return v.toFixed(2);
     return v.toFixed(0);
   };
   const fmtT = (t: number): { date: string; time: string } => {
@@ -340,8 +374,8 @@ function TotalizerChart({ history }: { history: Fs02Health[] }) {
   const latestPt = points[points.length - 1];
 
   return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%">
+    <div className="fm-chart-wrap">
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" className="fm-chart-svg">
         {yTicks.map((t, i) => (
           <g key={`y-${i}`}>
             <line

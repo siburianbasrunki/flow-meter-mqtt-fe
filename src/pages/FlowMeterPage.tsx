@@ -187,15 +187,11 @@ export default function FlowMeterPage() {
 
   const allMessages = apiMessages;
 
-  // Group by slocn (unit fisik identifier) — vendor kadang share fm_id
-  // antar sloc selama pemulihan firmware, jadi keying by fm_id akan
-  // bikin unit-unit itu overwrite satu sama lain.
   const messagesByFm = useMemo(() => {
     const map = new Map<string, FlowMeterPayload[]>();
     for (const msg of allMessages) {
-      const key = msg.slocn ?? msg.fm_id;
-      const list = map.get(key) ?? [];
-      map.set(key, [msg, ...list].slice(0, 100));
+      const list = map.get(msg.fm_id) ?? [];
+      map.set(msg.fm_id, [msg, ...list].slice(0, 100));
     }
     return map;
   }, [allMessages]);
@@ -266,7 +262,7 @@ export default function FlowMeterPage() {
 
     const controller = new AbortController();
     const params = new URLSearchParams({
-      slocn: selectedFmId,
+      fmId: selectedFmId,
       from: fromDate.toISOString(),
       to: toDate.toISOString(),
       limit: "5000",
@@ -432,10 +428,10 @@ export default function FlowMeterPage() {
                   >
                     <div className="fm-list-id">
                       <span className="fm-list-led" />
-                      {id}
+                      {m?.slocn ?? id}
                     </div>
                     <div className="fm-list-meta">
-                      <span className="fm-mono">{m?.fm_id ?? "—"}</span>
+                      <span className="fm-mono">{id}</span>
                       <span className="fm-list-tota">
                         {m ? fmtCompact(m.totalisator) + " L" : "—"}
                       </span>

@@ -95,18 +95,14 @@ export default function HistoryAggregatedPage() {
   useEffect(() => {
     fetch(`${API_URL}/iot/flow-meter/latest`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
-      .then(
-        (body: { data: { slocn?: string | null; fm_id?: string }[] }) => {
-          const list = Array.isArray(body.data)
-            ? body.data
-                .map((r) => r.slocn ?? r.fm_id ?? "")
-                .filter((s) => s.length > 0)
-            : [];
-          const unique = Array.from(new Set(list)).sort();
-          setFmIds(unique);
-          setSelectedFmId((prev) => prev || unique[0] || "");
-        },
-      )
+      .then((body: { data: { fm_id?: string }[] }) => {
+        const list = Array.isArray(body.data)
+          ? body.data.map((r) => r.fm_id ?? "").filter((s) => s.length > 0)
+          : [];
+        const unique = Array.from(new Set(list)).sort();
+        setFmIds(unique);
+        setSelectedFmId((prev) => prev || unique[0] || "");
+      })
       .catch((err) => console.warn("[history-agg] latest fetch failed:", err));
   }, []);
 
@@ -141,7 +137,7 @@ export default function HistoryAggregatedPage() {
 
     const controller = new AbortController();
     const params = new URLSearchParams({
-      slocn: selectedFmId,
+      fmId: selectedFmId,
       limit: "10000",
     });
     if (fromDate && toDate) {
