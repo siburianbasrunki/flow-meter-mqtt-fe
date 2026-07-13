@@ -54,23 +54,35 @@ export default function HistoryPage() {
   const [customTo, setCustomTo] = useState<string>(() =>
     toLocalInput(new Date()),
   );
+  // Sub-filter jam-of-day (HH:MM). Kosong = tidak diaktifkan.
+  const [hourFrom, setHourFrom] = useState<string>("");
+  const [hourTo, setHourTo] = useState<string>("");
   const [rows, setRows] = useState<FlowMeterPayload[]>([]);
   const [source, setSource] = useState<"db" | "cache" | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
 
-  // Hydrate FM list
+  // Hydrate FM list — pakai /latest (unit yang lagi aktif kirim) supaya
+  // unit offline gak nongol di dropdown. Fallback ke /list kalau /latest kosong
+  // (BE baru restart, semua vendor lagi diem).
   useEffect(() => {
-    fetch(`${API_URL}/iot/flow-meter/list`, { cache: "no-store" })
+    fetch(`${API_URL}/iot/flow-meter/latest`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
-      .then((body: { data: string[] }) => {
-        const list = Array.isArray(body.data) ? body.data : [];
-        setFmIds(list);
-        setSelectedFmId((prev) => prev || list[0] || "");
-      })
+      .then(
+        (body: { data: { slocn?: string | null; fm_id?: string }[] }) => {
+          const list = Array.isArray(body.data)
+            ? body.data
+                .map((r) => r.slocn ?? r.fm_id ?? "")
+                .filter((s) => s.length > 0)
+            : [];
+          const unique = Array.from(new Set(list)).sort();
+          setFmIds(unique);
+          setSelectedFmId((prev) => prev || unique[0] || "");
+        },
+      )
       .catch((err) => {
-        console.warn("[history] list fetch failed:", err);
+        console.warn("[history] latest fetch failed:", err);
       });
   }, []);
 
@@ -106,7 +118,7 @@ export default function HistoryPage() {
 
     const controller = new AbortController();
     const params = new URLSearchParams({
-      fmId: selectedFmId,
+      slocn: selectedFmId,
       limit: "5000",
     });
     if (fromDate && toDate) {
@@ -141,20 +153,65 @@ export default function HistoryPage() {
     return () => controller.abort();
   }, [selectedFmId, rangeMode, customFrom, customTo, refreshTick]);
 
+  // Filter jam-of-day (HH:MM) — cross-day: filter berlaku di tiap hari
+  // dalam range. Kalau `hourFrom` > `hourTo`, dianggap window melewati tengah
+  // malam (mis. 22:00 → 04:00 keesokan hari).
+  const hourFilteredRows = useMemo(() => {
+    if (!hourFrom && !hourTo) return rows;
+    const parseHm = (s: string): number | null => {
+      const m = /^(\d{2}):(\d{2})$/.exec(s.trim());
+      if (!m) return null;
+      const h = Number(m[1]);
+      const min = Number(m[2]);
+      if (h > 23 || min > 59) return null;
+      return h * 60 + min;
+    };
+    const fromMin = hourFrom ? parseHm(hourFrom) : 0;
+    const toMin = hourTo ? parseHm(hourTo) : 24 * 60 - 1;
+    if (fromMin === null || toMin === null) return rows;
+    return rows.filter((r) => {
+      const dt = r.datetime ?? "";
+      // format expected: "YYYY-MM-DD HH:MM:SS"
+      const hm = dt.slice(11, 16);
+      const cur = parseHm(hm);
+      if (cur === null) return false;
+      if (fromMin <= toMin) return cur >= fromMin && cur <= toMin;
+      // wrap around midnight
+      return cur >= fromMin || cur <= toMin;
+    });
+  }, [rows, hourFrom, hourTo]);
+
   // Compute delta (kenaikan) — assumes newest-first ordering
   const rowsWithDelta = useMemo(() => {
-    return rows.map((r, i) => {
-      const next = rows[i + 1];
+    return hourFilteredRows.map((r, i) => {
+      const next = hourFilteredRows[i + 1];
       const delta =
         next && Number.isFinite(next.totalisator)
           ? r.totalisator - next.totalisator
           : null;
       return { ...r, _delta: delta };
     });
-  }, [rows]);
+  }, [hourFilteredRows]);
+
+  // Summary: total kenaikan dari row terlama sampai terbaru dalam filter aktif
+  const summary = useMemo(() => {
+    if (hourFilteredRows.length === 0) return null;
+    // rows are newest-first
+    const newest = hourFilteredRows[0];
+    const oldest = hourFilteredRows[hourFilteredRows.length - 1];
+    const totalDelta = newest.totalisator - oldest.totalisator;
+    return {
+      count: hourFilteredRows.length,
+      startAt: oldest.datetime,
+      endAt: newest.datetime,
+      startTotal: oldest.totalisator,
+      endTotal: newest.totalisator,
+      totalDelta,
+    };
+  }, [hourFilteredRows]);
 
   const handleExportCsv = useCallback(() => {
-    if (rows.length === 0) return;
+    if (rowsWithDelta.length === 0) return;
     const header = [
       "no",
       "datetime_wib",
@@ -199,7 +256,7 @@ export default function HistoryPage() {
     a.download = `flow-meter-${selectedFmId}-${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [rows.length, rowsWithDelta, selectedFmId]);
+  }, [rowsWithDelta, selectedFmId]);
 
   return (
     <div className="hist-dashboard">
@@ -295,6 +352,40 @@ export default function HistoryPage() {
             </div>
           )}
 
+          {/* Sub-filter Jam (HH:MM) — filter jam-of-day di atas range date */}
+          <div className="hist-custom">
+            <label className="hist-field">
+              <span className="hist-field-label">Jam Dari</span>
+              <input
+                type="time"
+                className="hist-input"
+                value={hourFrom}
+                onChange={(e) => setHourFrom(e.target.value)}
+              />
+            </label>
+            <label className="hist-field">
+              <span className="hist-field-label">Jam Sampai</span>
+              <input
+                type="time"
+                className="hist-input"
+                value={hourTo}
+                onChange={(e) => setHourTo(e.target.value)}
+              />
+            </label>
+            {(hourFrom || hourTo) && (
+              <button
+                type="button"
+                className="hist-btn"
+                onClick={() => {
+                  setHourFrom("");
+                  setHourTo("");
+                }}
+              >
+                Clear Jam
+              </button>
+            )}
+          </div>
+
           <div className="hist-actions">
             <button
               type="button"
@@ -308,7 +399,7 @@ export default function HistoryPage() {
               type="button"
               className="hist-btn hist-btn-primary"
               onClick={handleExportCsv}
-              disabled={rows.length === 0}
+              disabled={rowsWithDelta.length === 0}
             >
               Export CSV
             </button>
@@ -317,6 +408,47 @@ export default function HistoryPage() {
 
         {error && <div className="hist-error">{error}</div>}
       </section>
+
+      {/* Summary card — hasil filter (date range + jam filter) */}
+      {summary && (
+        <section className="hist-summary">
+          <div className="hist-summary-item">
+            <div className="hist-summary-label">Total Kenaikan</div>
+            <div
+              className={`hist-summary-value hist-summary-delta${
+                summary.totalDelta > 0 ? " hist-delta-pos" : ""
+              }`}
+            >
+              {(summary.totalDelta > 0 ? "+" : "") +
+                fmt(summary.totalDelta) +
+                " L"}
+            </div>
+          </div>
+          <div className="hist-summary-item">
+            <div className="hist-summary-label">Start (L)</div>
+            <div className="hist-summary-value">
+              {fmt(summary.startTotal)} L
+            </div>
+            <div className="hist-summary-sub">{summary.startAt}</div>
+          </div>
+          <div className="hist-summary-item">
+            <div className="hist-summary-label">End (L)</div>
+            <div className="hist-summary-value">
+              {fmt(summary.endTotal)} L
+            </div>
+            <div className="hist-summary-sub">{summary.endAt}</div>
+          </div>
+          <div className="hist-summary-item">
+            <div className="hist-summary-label">Data Points</div>
+            <div className="hist-summary-value">{summary.count}</div>
+            {(hourFrom || hourTo) && (
+              <div className="hist-summary-sub">
+                Jam window: {hourFrom || "00:00"} – {hourTo || "23:59"}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Table */}
       <main className="hist-main">
@@ -392,7 +524,10 @@ export default function HistoryPage() {
 
       <footer className="hist-footer">
         <span>
-          Total rows: <code>{rows.length}</code>
+          Rows: <code>{hourFilteredRows.length}</code>
+          {(hourFrom || hourTo) && rows.length !== hourFilteredRows.length && (
+            <> / {rows.length} (jam filter aktif)</>
+          )}
         </span>
         <span>
           API: <code>{API_URL}</code>

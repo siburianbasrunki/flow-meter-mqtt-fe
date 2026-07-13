@@ -170,8 +170,8 @@ function normalizeBaseUrl(raw: string): string {
 }
 
 /**
- * Merge initial snapshot ke state. Setiap fm_id hanya 1 entry terbaru.
- * Snapshot biasanya 1 entry per fm_id, jadi cukup unshift di depan + dedupe.
+ * Merge initial snapshot ke state. Dedupe by slocn (bukan fm_id) karena
+ * vendor kadang assign fm_id sama antar sloc selama pemulihan firmware.
  */
 function mergeMessages(
   prev: FlowMeterPayload[],
@@ -179,18 +179,19 @@ function mergeMessages(
 ): FlowMeterPayload[] {
   const seen = new Set<string>();
   const out: FlowMeterPayload[] = [];
-  // incoming first (treated as newest)
+  const key = (m: FlowMeterPayload) =>
+    `${m.slocn ?? m.fm_id}|${m.datetime}`;
   for (const m of incoming) {
-    const key = `${m.fm_id}|${m.datetime}`;
-    if (!seen.has(key)) {
-      seen.add(key);
+    const k = key(m);
+    if (!seen.has(k)) {
+      seen.add(k);
       out.push(m);
     }
   }
   for (const m of prev) {
-    const key = `${m.fm_id}|${m.datetime}`;
-    if (!seen.has(key)) {
-      seen.add(key);
+    const k = key(m);
+    if (!seen.has(k)) {
+      seen.add(k);
       out.push(m);
     }
   }

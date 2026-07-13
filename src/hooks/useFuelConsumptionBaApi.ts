@@ -91,6 +91,7 @@ export type ConnectionStatus =
 interface UseFcbaApiReturn {
   status: ConnectionStatus;
   units: FuelConsumptionBaPayload[];
+  allCns: string[]; // full list dari /list (cache + DB), termasuk unit stale
   liveHistoryByCn: Map<string, FuelConsumptionBaPayload[]>;
   apiUrl: string;
 }
@@ -116,6 +117,7 @@ export function useFuelConsumptionBaApi(): UseFcbaApiReturn {
   const esRef = useRef<EventSource | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [units, setUnits] = useState<FuelConsumptionBaPayload[]>([]);
+  const [allCns, setAllCns] = useState<string[]>([]);
   const [liveHistoryByCn, setLiveHistoryByCn] = useState<
     Map<string, FuelConsumptionBaPayload[]>
   >(new Map());
@@ -157,6 +159,19 @@ export function useFuelConsumptionBaApi(): UseFcbaApiReturn {
           }
         })
         .catch((err) => console.warn("[fcba] initial /latest failed:", err));
+
+      // Fetch full CN list (union cache + DB) — supaya unit historikal yg
+      // belum ada di live cache tetep bisa dipilih di sidebar.
+      fetch(`${url}/iot/fuel-consumption-ba/list?t=${Date.now()}`, {
+        cache: "no-store",
+      })
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
+        .then((body: { data: string[] }) => {
+          if (Array.isArray(body.data)) {
+            setAllCns([...body.data].sort());
+          }
+        })
+        .catch((err) => console.warn("[fcba] initial /list failed:", err));
 
       const es = new EventSource(`${url}/iot/fuel-consumption-ba/stream`);
       esRef.current = es;
@@ -209,5 +224,5 @@ export function useFuelConsumptionBaApi(): UseFcbaApiReturn {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { status, units, liveHistoryByCn, apiUrl };
+  return { status, units, allCns, liveHistoryByCn, apiUrl };
 }

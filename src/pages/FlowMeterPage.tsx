@@ -20,6 +20,42 @@ function fmtCompact(n: number) {
   return n.toFixed(0);
 }
 
+/**
+ * Y-axis formatter yang adaptif ke range. Range kecil (mis. 1.2K di atas 14.9M)
+ * butuh lebih banyak desimal biar 4 tick gak semua nulis "14.9M".
+ */
+function fmtYAxis(v: number, range: number) {
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) {
+    const scaled = v / 1_000_000;
+    const rangeScaled = range / 1_000_000;
+    let d = 1;
+    if (rangeScaled < 0.001) d = 4;
+    else if (rangeScaled < 0.01) d = 3;
+    else if (rangeScaled < 0.1) d = 2;
+    return scaled.toFixed(d) + "M";
+  }
+  if (abs >= 1_000) {
+    const scaled = v / 1_000;
+    const rangeScaled = range / 1_000;
+    let d = 1;
+    if (rangeScaled < 0.01) d = 3;
+    else if (rangeScaled < 0.1) d = 2;
+    return scaled.toFixed(d) + "K";
+  }
+  return v.toFixed(0);
+}
+
+function fmtTimeWib(tsUtcMs: number): string {
+  const d = new Date(tsUtcMs + 7 * 3600 * 1000);
+  return d.toISOString().slice(11, 19);
+}
+
+function fmtDateWib(tsUtcMs: number): string {
+  const d = new Date(tsUtcMs + 7 * 3600 * 1000);
+  return d.toISOString().slice(5, 10); // MM-DD
+}
+
 interface FuelTransaction {
   startAt: string;
   endAt: string;
@@ -151,15 +187,21 @@ export default function FlowMeterPage() {
 
   const allMessages = apiMessages;
 
+  // Group by slocn (unit fisik identifier) — vendor kadang share fm_id
+  // antar sloc selama pemulihan firmware, jadi keying by fm_id akan
+  // bikin unit-unit itu overwrite satu sama lain.
   const messagesByFm = useMemo(() => {
     const map = new Map<string, FlowMeterPayload[]>();
     for (const msg of allMessages) {
-      const list = map.get(msg.fm_id) ?? [];
-      map.set(msg.fm_id, [msg, ...list].slice(0, 100));
+      const key = msg.slocn ?? msg.fm_id;
+      const list = map.get(key) ?? [];
+      map.set(key, [msg, ...list].slice(0, 100));
     }
     return map;
   }, [allMessages]);
 
+  // Sidebar hanya nampilin unit yang aktif kirim (live cache).
+  // Unit offline/stale di-hide supaya sidebar bersih.
   const fmIds = useMemo(
     () => Array.from(messagesByFm.keys()).sort(),
     [messagesByFm],
@@ -224,7 +266,7 @@ export default function FlowMeterPage() {
 
     const controller = new AbortController();
     const params = new URLSearchParams({
-      fmId: selectedFmId,
+      slocn: selectedFmId,
       from: fromDate.toISOString(),
       to: toDate.toISOString(),
       limit: "5000",
@@ -393,7 +435,7 @@ export default function FlowMeterPage() {
                       {id}
                     </div>
                     <div className="fm-list-meta">
-                      <span className="fm-mono">{m?.slocn ?? "—"}</span>
+                      <span className="fm-mono">{m?.fm_id ?? "—"}</span>
                       <span className="fm-list-tota">
                         {m ? fmtCompact(m.totalisator) + " L" : "—"}
                       </span>
@@ -623,6 +665,7 @@ function KpiTile({ label, value, hint, color }: KpiTileProps) {
  * Cocok buat data monotonik kayak totalizer fuel meter.
  */
 function FmStepChart({ history: raw }: { history: FlowMeterPayload[] }) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   // Force oldest-first by datetime
   const history = [...raw].sort(
     (a, b) => parseWib(a.datetime) - parseWib(b.datetime),
@@ -647,8 +690,8 @@ function FmStepChart({ history: raw }: { history: FlowMeterPayload[] }) {
   }
 
   const W = 720;
-  const H = 220;
-  const PAD = { top: 16, right: 56, bottom: 36, left: 12 };
+  const H = 232;
+  const PAD = { top: 16, right: 56, bottom: 48, left: 12 };
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;
 
@@ -682,10 +725,12 @@ function FmStepChart({ history: raw }: { history: FlowMeterPayload[] }) {
 
   // Y ticks
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin + (yRange * i) / 4);
-  // X ticks: 5 evenly distributed from data points
-  const N = Math.min(5, history.length);
-  const xTickIdx = Array.from({ length: N }, (_, k) =>
-    Math.round((k * (history.length - 1)) / (N - 1)),
+  // X ticks: distribusi by TIME (bukan by index) supaya gak clustering
+  // saat data point rapat di ujung. 5 tick evenly spaced across tRange.
+  const N = 5;
+  const xTickTimes = Array.from(
+    { length: N },
+    (_, k) => tMin + (tRange * k) / (N - 1),
   );
 
   return (
@@ -709,7 +754,7 @@ function FmStepChart({ history: raw }: { history: FlowMeterPayload[] }) {
               fill="#64748b"
               fontFamily="monospace"
             >
-              {fmtCompact(t)}
+              {fmtYAxis(t, yRange)}
             </text>
           </g>
         ))}
@@ -723,20 +768,30 @@ function FmStepChart({ history: raw }: { history: FlowMeterPayload[] }) {
           stroke="#c4ccd5"
         />
 
-        {/* X labels (HH:MM) */}
-        {xTickIdx.map((idx) => (
-          <text
-            key={`x-${idx}`}
-            x={xScale(ts[idx])}
-            y={PAD.top + innerH + 14}
-            textAnchor="middle"
-            fontSize="9.5"
-            fill="#64748b"
-            fontFamily="monospace"
-          >
-            {history[idx].datetime?.slice(11, 16) ?? ""}
-          </text>
-        ))}
+        {/* X labels (DD-MM baris atas, HH:MM:SS baris bawah) */}
+        {xTickTimes.map((t, k) => {
+          const anchor =
+            k === 0 ? "start" : k === xTickTimes.length - 1 ? "end" : "middle";
+          const x = xScale(t);
+          return (
+            <text
+              key={`x-${k}`}
+              x={x}
+              y={PAD.top + innerH + 14}
+              textAnchor={anchor}
+              fontSize="9.5"
+              fill="#64748b"
+              fontFamily="monospace"
+            >
+              <tspan x={x} dy="0">
+                {fmtDateWib(t)}
+              </tspan>
+              <tspan x={x} dy="12">
+                {fmtTimeWib(t)}
+              </tspan>
+            </text>
+          );
+        })}
 
         {/* Step path */}
         <path d={stepPath} fill="none" stroke="#0891b2" strokeWidth="1.6" />
@@ -747,7 +802,7 @@ function FmStepChart({ history: raw }: { history: FlowMeterPayload[] }) {
             key={`d-${i}`}
             cx={xScale(ts[i])}
             cy={yScale(h.totalisator)}
-            r="2"
+            r={hoveredIdx === i ? 3.5 : 2}
             fill="#0891b2"
           />
         ))}
@@ -768,6 +823,72 @@ function FmStepChart({ history: raw }: { history: FlowMeterPayload[] }) {
             repeatCount="indefinite"
           />
         </circle>
+
+        {/* Hover hit-targets (invisible, larger radius biar gampang di-hover) */}
+        {history.map((h, i) => (
+          <circle
+            key={`hit-${i}`}
+            cx={xScale(ts[i])}
+            cy={yScale(h.totalisator)}
+            r="10"
+            fill="transparent"
+            style={{ cursor: "crosshair" }}
+            onMouseEnter={() => setHoveredIdx(i)}
+            onMouseLeave={() => setHoveredIdx(null)}
+          />
+        ))}
+
+        {/* Tooltip */}
+        {hoveredIdx !== null &&
+          (() => {
+            const h = history[hoveredIdx];
+            const cx = xScale(ts[hoveredIdx]);
+            const cy = yScale(h.totalisator);
+            const timeLine =
+              (h.datetime ?? "").slice(0, 10) +
+              " " +
+              (h.datetime ?? "").slice(11, 19);
+            const valueLine = `${fmt(h.totalisator, 0)} L`;
+            const boxW = 172;
+            const boxH = 40;
+            let boxX = cx + 10;
+            if (boxX + boxW > PAD.left + innerW)
+              boxX = cx - boxW - 10;
+            let boxY = cy - boxH - 8;
+            if (boxY < PAD.top) boxY = cy + 10;
+            return (
+              <g pointerEvents="none">
+                <rect
+                  x={boxX}
+                  y={boxY}
+                  width={boxW}
+                  height={boxH}
+                  rx="4"
+                  fill="#0f172a"
+                  opacity="0.94"
+                />
+                <text
+                  x={boxX + 8}
+                  y={boxY + 15}
+                  fontSize="10"
+                  fill="#e2e8f0"
+                  fontFamily="monospace"
+                >
+                  {timeLine}
+                </text>
+                <text
+                  x={boxX + 8}
+                  y={boxY + 30}
+                  fontSize="11"
+                  fill="#67e8f9"
+                  fontFamily="monospace"
+                  fontWeight="600"
+                >
+                  {valueLine}
+                </text>
+              </g>
+            );
+          })()}
       </svg>
     </div>
   );

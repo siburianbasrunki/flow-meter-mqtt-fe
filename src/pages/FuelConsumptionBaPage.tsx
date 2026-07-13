@@ -69,24 +69,32 @@ function toLocalInput(d: Date): string {
 }
 
 export default function FuelConsumptionBaPage() {
-  const { status, units, liveHistoryByCn, apiUrl } =
-    useFuelConsumptionBaApi();
+  const { status, units, liveHistoryByCn, apiUrl } = useFuelConsumptionBaApi();
+
+  // Sidebar hanya nampilin unit yang aktif (live cache). Unit offline
+  // di-hide supaya sidebar bersih.
+  const displayUnits = useMemo(
+    () => [...units].sort((a, b) => a.cn.localeCompare(b.cn)),
+    [units],
+  );
 
   const [selectedCn, setSelectedCn] = useState<string | null>(null);
   useEffect(() => {
-    if (units.length === 0) {
+    if (displayUnits.length === 0) {
       if (selectedCn) setSelectedCn(null);
       return;
     }
-    if (!selectedCn || !units.find((u) => u.cn === selectedCn)) {
-      setSelectedCn(units[0].cn);
+    if (!selectedCn || !displayUnits.find((u) => u.cn === selectedCn)) {
+      setSelectedCn(displayUnits[0].cn);
     }
-  }, [units, selectedCn]);
+  }, [displayUnits, selectedCn]);
 
   const selected = useMemo(
     () => units.find((u) => u.cn === selectedCn) ?? null,
     [units, selectedCn],
   );
+
+  const isSelectedStale = selectedCn !== null && selected === null;
 
   // ── Range filter for chart ───────────────────────────────────────
   const [rangeMode, setRangeMode] = useState<RangeMode>("live");
@@ -276,23 +284,28 @@ export default function FuelConsumptionBaPage() {
         <aside className="fcba-list-panel">
           <div className="fcba-panel-title">HD Units</div>
           <div className="fcba-list">
-            {units.length === 0 ? (
+            {displayUnits.length === 0 ? (
               <div className="fcba-list-empty">Belum ada data</div>
             ) : (
-              units.map((u) => {
+              displayUnits.map((u) => {
                 const isActive = selectedCn === u.cn;
+                const hasLive = u.dateTime !== "";
                 return (
                   <button
                     key={u.cn}
                     className={`fcba-list-item${
                       isActive ? " fcba-list-item-active" : ""
-                    }`}
+                    }${!hasLive ? " fcba-list-item-stale" : ""}`}
                     onClick={() => setSelectedCn(u.cn)}
                   >
                     <div className="fcba-list-id">
                       <span
                         className="fcba-list-led"
-                        style={{ background: fuelColor(u.fuelLevel) }}
+                        style={{
+                          background: hasLive
+                            ? fuelColor(u.fuelLevel)
+                            : "#94a3b8",
+                        }}
                       />
                       {u.cn}
                       {u.deviceType && (
@@ -304,16 +317,24 @@ export default function FuelConsumptionBaPage() {
                       )}
                     </div>
                     <div className="fcba-list-meta">
-                      <span className="fcba-mono">
-                        {u.fuelLevel !== null && u.fuelLevel !== undefined
-                          ? fmt(u.fuelLevel, 0) + "%"
-                          : "—"}
-                      </span>
-                      <span className="fcba-list-rate fcba-mono">
-                        {u.fuelRate !== null && u.fuelRate !== undefined
-                          ? fmt(u.fuelRate, 1) + " L/h"
-                          : "—"}
-                      </span>
+                      {hasLive ? (
+                        <>
+                          <span className="fcba-mono">
+                            {u.fuelLevel !== null && u.fuelLevel !== undefined
+                              ? fmt(u.fuelLevel, 0) + "%"
+                              : "—"}
+                          </span>
+                          <span className="fcba-list-rate fcba-mono">
+                            {u.fuelRate !== null && u.fuelRate !== undefined
+                              ? fmt(u.fuelRate, 1) + " L/h"
+                              : "—"}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="fcba-list-stale-label">
+                          no live · pilih range historikal
+                        </span>
+                      )}
                     </div>
                   </button>
                 );
@@ -323,7 +344,20 @@ export default function FuelConsumptionBaPage() {
         </aside>
 
         <section className="fcba-detail-panel">
-          {selected ? (
+          {isSelectedStale && selectedCn ? (
+            <StaleUnitDetail
+              cn={selectedCn}
+              rangeMode={rangeMode}
+              setRangeMode={setRangeMode}
+              customFrom={customFrom}
+              setCustomFrom={setCustomFrom}
+              customTo={customTo}
+              setCustomTo={setCustomTo}
+              chartData={chartData}
+              historyLoading={historyLoading}
+              historyError={historyError}
+            />
+          ) : selected ? (
             <>
               <div className="fcba-tbar">
                 <div className="fcba-tbar-id">{selected.cn}</div>
@@ -566,6 +600,129 @@ export default function FuelConsumptionBaPage() {
   );
 }
 
+/**
+ * Detail panel untuk unit yg gak ada live cache — cuma bisa lihat historical
+ * chart via range picker. Compact version.
+ */
+interface StaleUnitDetailProps {
+  cn: string;
+  rangeMode: RangeMode;
+  setRangeMode: (m: RangeMode) => void;
+  customFrom: string;
+  setCustomFrom: (v: string) => void;
+  customTo: string;
+  setCustomTo: (v: string) => void;
+  chartData: FuelConsumptionBaPayload[];
+  historyLoading: boolean;
+  historyError: string | null;
+}
+function StaleUnitDetail({
+  cn,
+  rangeMode,
+  setRangeMode,
+  customFrom,
+  setCustomFrom,
+  customTo,
+  setCustomTo,
+  chartData,
+  historyLoading,
+  historyError,
+}: StaleUnitDetailProps) {
+  return (
+    <>
+      <div className="fcba-tbar">
+        <div className="fcba-tbar-id">{cn}</div>
+        <span className="fcba-tbar-stale">NO LIVE DATA</span>
+        <div className="fcba-tbar-spacer" />
+        <div className="fcba-tbar-time fcba-mono fcba-muted">
+          pilih range historikal (1h / 6h / 24h / 7d / custom)
+        </div>
+      </div>
+
+      <div className="fcba-chart-section">
+        <div className="fcba-chart-head">
+          <div className="fcba-chart-title">Trend Fuel · History</div>
+          <div className="fcba-chart-meta">
+            {historyLoading
+              ? "loading…"
+              : `${chartData.length} data point · WIB`}
+          </div>
+        </div>
+        <div className="fcba-range-bar">
+          <div className="fcba-range-pills">
+            {(["live", "1h", "6h", "24h", "7d", "custom"] as RangeMode[]).map(
+              (m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={`fcba-range-pill${
+                    rangeMode === m ? " fcba-range-pill-active" : ""
+                  }`}
+                  onClick={() => setRangeMode(m)}
+                >
+                  {m === "live" ? "Live" : m}
+                </button>
+              ),
+            )}
+          </div>
+          {rangeMode === "custom" && (
+            <div className="fcba-range-custom">
+              <label className="fcba-range-label">
+                From
+                <input
+                  type="datetime-local"
+                  className="fcba-range-input"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                />
+              </label>
+              <label className="fcba-range-label">
+                To
+                <input
+                  type="datetime-local"
+                  className="fcba-range-input"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                />
+              </label>
+            </div>
+          )}
+          {historyError && (
+            <span className="fcba-range-error">{historyError}</span>
+          )}
+        </div>
+
+        <div className="fcba-chart-grid">
+          <MetricChart
+            title="Fuel Level (%)"
+            data={chartData}
+            accessor={(r) => r.fuelLevel ?? null}
+            color="#0891b2"
+            unit="%"
+            fixedScale={{ yMin: 0, yMax: 100 }}
+            defaultScaleMode="auto"
+          />
+          <MetricChart
+            title="Fuel Rate (L/h)"
+            data={chartData}
+            accessor={(r) => r.fuelRate ?? null}
+            color="#ea580c"
+            unit=" L/h"
+          />
+          <MetricChart
+            title="Total Fuel Consumption (L)"
+            data={chartData}
+            accessor={(r) => r.totalFuelConsum ?? null}
+            color="#7c3aed"
+            unit=" L"
+            stepMode
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
 interface KpiTileProps {
   label: string;
   value: string;
@@ -745,6 +902,7 @@ function MetricChart({
   const [customMax, setCustomMax] = useState<string>(
     fixedScale ? String(fixedScale.yMax) : "100",
   );
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   let effectiveYMin: number | undefined = yMinOverride;
   let effectiveYMax: number | undefined = yMaxOverride;
@@ -798,8 +956,8 @@ function MetricChart({
   }
 
   const W = 1200;
-  const H = 260;
-  const PAD = { top: 16, right: 64, bottom: 30, left: 16 };
+  const H = 274;
+  const PAD = { top: 16, right: 64, bottom: 44, left: 16 };
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;
 
@@ -834,9 +992,11 @@ function MetricChart({
     .join(" ");
 
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin + (yRange * i) / 4);
-  const N = Math.min(8, points.length);
-  const xTickIdx = Array.from({ length: N }, (_, k) =>
-    Math.round((k * (points.length - 1)) / (N - 1)),
+  // X ticks: distribusi by TIME supaya gak clustering saat data padat di ujung
+  const N = 6;
+  const xTickTimes = Array.from(
+    { length: N },
+    (_, k) => tMin + (tRange * k) / (N - 1),
   );
 
   const latestPt = points[points.length - 1];
@@ -890,26 +1050,44 @@ function MetricChart({
           y2={PAD.top + innerH}
           stroke="#c4ccd5"
         />
-        {xTickIdx.map((idx) => {
+        {xTickTimes.map((t, k) => {
           // Shift +7h → WIB display (toISOString returns UTC by default)
-          const wibIso = new Date(
-            points[idx].t + 7 * 60 * 60 * 1000,
-          ).toISOString();
+          const wibIso = new Date(t + 7 * 60 * 60 * 1000).toISOString();
+          const anchor =
+            k === 0 ? "start" : k === xTickTimes.length - 1 ? "end" : "middle";
+          const x = xScale(t);
           return (
             <text
-              key={`x-${idx}`}
-              x={xScale(points[idx].t)}
+              key={`x-${k}`}
+              x={x}
               y={PAD.top + innerH + 14}
-              textAnchor="middle"
+              textAnchor={anchor}
               fontSize="9.5"
               fill="#64748b"
               fontFamily="monospace"
             >
-              {wibIso.slice(11, 19)}
+              <tspan x={x} dy="0">
+                {wibIso.slice(5, 10)}
+              </tspan>
+              <tspan x={x} dy="12">
+                {wibIso.slice(11, 19)}
+              </tspan>
             </text>
           );
         })}
         <path d={path} fill="none" stroke={color} strokeWidth="1.6" />
+
+        {/* Data dots (kecil di semua point, membesar saat hover) */}
+        {points.map((p, i) => (
+          <circle
+            key={`d-${i}`}
+            cx={xScale(p.t)}
+            cy={yScale(p.v)}
+            r={hoveredIdx === i ? 3.5 : 1.8}
+            fill={color}
+          />
+        ))}
+
         <circle
           cx={xScale(latestPt.t)}
           cy={yScale(latestPt.v)}
@@ -925,6 +1103,69 @@ function MetricChart({
             repeatCount="indefinite"
           />
         </circle>
+
+        {/* Hover hit-targets */}
+        {points.map((p, i) => (
+          <circle
+            key={`hit-${i}`}
+            cx={xScale(p.t)}
+            cy={yScale(p.v)}
+            r="9"
+            fill="transparent"
+            style={{ cursor: "crosshair" }}
+            onMouseEnter={() => setHoveredIdx(i)}
+            onMouseLeave={() => setHoveredIdx(null)}
+          />
+        ))}
+
+        {/* Tooltip */}
+        {hoveredIdx !== null &&
+          (() => {
+            const p = points[hoveredIdx];
+            const cx = xScale(p.t);
+            const cy = yScale(p.v);
+            const wibIso = new Date(p.t + 7 * 60 * 60 * 1000).toISOString();
+            const timeLine = wibIso.slice(0, 10) + " " + wibIso.slice(11, 19);
+            const valueLine = `${p.v.toFixed(p.v > 100 ? 0 : 2)}${unit.trim()}`;
+            const boxW = 172;
+            const boxH = 40;
+            let boxX = cx + 10;
+            if (boxX + boxW > PAD.left + innerW) boxX = cx - boxW - 10;
+            let boxY = cy - boxH - 8;
+            if (boxY < PAD.top) boxY = cy + 10;
+            return (
+              <g pointerEvents="none">
+                <rect
+                  x={boxX}
+                  y={boxY}
+                  width={boxW}
+                  height={boxH}
+                  rx="4"
+                  fill="#0f172a"
+                  opacity="0.94"
+                />
+                <text
+                  x={boxX + 8}
+                  y={boxY + 15}
+                  fontSize="10"
+                  fill="#e2e8f0"
+                  fontFamily="monospace"
+                >
+                  {timeLine}
+                </text>
+                <text
+                  x={boxX + 8}
+                  y={boxY + 30}
+                  fontSize="11"
+                  fill={color}
+                  fontFamily="monospace"
+                  fontWeight="600"
+                >
+                  {valueLine}
+                </text>
+              </g>
+            );
+          })()}
       </svg>
     </div>
   );

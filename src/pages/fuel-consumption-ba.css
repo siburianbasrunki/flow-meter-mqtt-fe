@@ -288,6 +288,27 @@
   color: var(--scada-text-2);
   font-size: 11px;
 }
+.fcba-tbar-stale {
+  padding: 2px 8px;
+  font-size: 9px;
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--scada-dim);
+  background: var(--scada-surface-3);
+  border: 1px solid var(--scada-border-2);
+}
+.fcba-list-item-stale {
+  opacity: 0.65;
+}
+.fcba-list-item-stale.fcba-list-item-active {
+  opacity: 1;
+}
+.fcba-list-stale-label {
+  font-size: 9.5px;
+  color: var(--scada-dim);
+  font-style: italic;
+}
 
 /* Hero row: fuel gauge + fuel rate */
 .fcba-hero-row {

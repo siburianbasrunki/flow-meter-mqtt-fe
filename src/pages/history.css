@@ -276,6 +276,44 @@
   letter-spacing: 0.4px;
 }
 
+/* Summary card */
+.hist-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--scada-surface-2);
+  border-bottom: 1px solid var(--scada-border);
+}
+.hist-summary-item {
+  padding: 10px 14px;
+  background: var(--scada-surface);
+  border: 1px solid var(--scada-border);
+}
+.hist-summary-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--scada-dim);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.hist-summary-value {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--scada-text);
+}
+.hist-summary-delta {
+  color: var(--scada-orange, #ea580c);
+}
+.hist-summary-sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--scada-dim);
+  margin-top: 4px;
+}
+
 /* Footer */
 .hist-footer {
   display: flex;

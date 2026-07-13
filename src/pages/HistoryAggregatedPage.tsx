@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FuelConsumptionBaPayload } from "../hooks/useFuelConsumptionBaApi";
+import type { FlowMeterPayload } from "../hooks/useFlowMeterApi";
 import "./history.css";
 
 const COMPANY = "PT Putra Perkasa Abadi";
 
-const API_URL = (() => {
-  const raw =
-    (import.meta as unknown as { env: Record<string, string> }).env
-      ?.VITE_FLOW_METER_API_URL ?? "http://localhost:3020";
+function normalizeBaseUrl(raw: string): string {
   const trimmed = raw.replace(/\/$/, "").trim();
+  if (!trimmed) return "";
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   return `https://${trimmed}`;
-})();
+}
+
+const API_URL = normalizeBaseUrl(
+  (import.meta as unknown as { env: Record<string, string> }).env
+    ?.VITE_FLOW_METER_API_URL ?? "http://localhost:3020",
+);
 
 type RangeMode = "live" | "1h" | "6h" | "24h" | "7d" | "custom";
 const PRESET_HOURS: Record<Exclude<RangeMode, "live" | "custom">, number> = {
@@ -20,6 +23,8 @@ const PRESET_HOURS: Record<Exclude<RangeMode, "live" | "custom">, number> = {
   "24h": 24,
   "7d": 24 * 7,
 };
+
+const WINDOW_PRESETS = [10, 20, 30, 60, 120, 300, 600];
 
 function toLocalInput(d: Date): string {
   const wib = new Date(d.getTime() + 7 * 60 * 60 * 1000);
@@ -41,13 +46,36 @@ function csvEscape(v: unknown): string {
   return s;
 }
 
-interface FcbaRowWithDelta extends FuelConsumptionBaPayload {
-  _fuelDelta: number | null;
+function parseWibMs(s: string | undefined | null): number {
+  if (!s) return NaN;
+  const cleaned = s.includes("T") ? s : s.replace(" ", "T");
+  const hasTz = /[Zz]|[+-]\d{2}:?\d{2}$/.test(cleaned);
+  const candidate = hasTz ? cleaned : cleaned + "+07:00";
+  return new Date(candidate).getTime();
 }
 
-export default function HistoryFcbaPage() {
-  const [cns, setCns] = useState<string[]>([]);
-  const [selectedCn, setSelectedCn] = useState<string>("");
+function fmtWib(tsMs: number): string {
+  const d = new Date(tsMs + 7 * 60 * 60 * 1000);
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
+interface AggBucket {
+  bucketKey: number;
+  startAt: string;
+  endAt: string;
+  startTotal: number;
+  endTotal: number;
+  delta: number;
+  rowCount: number;
+  avgFlowRate: number | null;
+  fmId: string;
+  slocn: string;
+  plantId: string;
+}
+
+export default function HistoryAggregatedPage() {
+  const [fmIds, setFmIds] = useState<string[]>([]);
+  const [selectedFmId, setSelectedFmId] = useState<string>("");
   const [rangeMode, setRangeMode] = useState<RangeMode>("24h");
   const [customFrom, setCustomFrom] = useState<string>(() =>
     toLocalInput(new Date(Date.now() - 24 * 60 * 60 * 1000)),
@@ -57,29 +85,33 @@ export default function HistoryFcbaPage() {
   );
   const [hourFrom, setHourFrom] = useState<string>("");
   const [hourTo, setHourTo] = useState<string>("");
-  const [rows, setRows] = useState<FuelConsumptionBaPayload[]>([]);
+  const [windowSec, setWindowSec] = useState<number>(10);
+  const [rows, setRows] = useState<FlowMeterPayload[]>([]);
   const [source, setSource] = useState<"db" | "cache" | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
-    // Pakai /latest supaya unit offline gak nongol di dropdown.
-    fetch(`${API_URL}/iot/fuel-consumption-ba/latest`, { cache: "no-store" })
+    fetch(`${API_URL}/iot/flow-meter/latest`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
-      .then((body: { data: { cn?: string }[] }) => {
-        const list = Array.isArray(body.data)
-          ? body.data.map((r) => r.cn ?? "").filter((s) => s.length > 0)
-          : [];
-        const unique = Array.from(new Set(list)).sort();
-        setCns(unique);
-        setSelectedCn((prev) => prev || unique[0] || "");
-      })
-      .catch((err) => console.warn("[history-fcba] latest fetch failed:", err));
+      .then(
+        (body: { data: { slocn?: string | null; fm_id?: string }[] }) => {
+          const list = Array.isArray(body.data)
+            ? body.data
+                .map((r) => r.slocn ?? r.fm_id ?? "")
+                .filter((s) => s.length > 0)
+            : [];
+          const unique = Array.from(new Set(list)).sort();
+          setFmIds(unique);
+          setSelectedFmId((prev) => prev || unique[0] || "");
+        },
+      )
+      .catch((err) => console.warn("[history-agg] latest fetch failed:", err));
   }, []);
 
   useEffect(() => {
-    if (!selectedCn) return;
+    if (!selectedFmId) return;
 
     let fromDate: Date | null = null;
     let toDate: Date | null = null;
@@ -109,8 +141,8 @@ export default function HistoryFcbaPage() {
 
     const controller = new AbortController();
     const params = new URLSearchParams({
-      cn: selectedCn,
-      limit: "5000",
+      slocn: selectedFmId,
+      limit: "10000",
     });
     if (fromDate && toDate) {
       params.set("from", fromDate.toISOString());
@@ -119,14 +151,14 @@ export default function HistoryFcbaPage() {
 
     setLoading(true);
     setError(null);
-    fetch(
-      `${API_URL}/iot/fuel-consumption-ba/history?${params.toString()}`,
-      { signal: controller.signal, cache: "no-store" },
-    )
+    fetch(`${API_URL}/iot/flow-meter/history?${params.toString()}`, {
+      signal: controller.signal,
+      cache: "no-store",
+    })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
       .then(
         (body: {
-          data: FuelConsumptionBaPayload[];
+          data: FlowMeterPayload[];
           source?: "db" | "cache";
         }) => {
           setRows(Array.isArray(body.data) ? body.data : []);
@@ -135,15 +167,16 @@ export default function HistoryFcbaPage() {
       )
       .catch((err) => {
         if (err?.name === "AbortError") return;
-        console.warn("[history-fcba] fetch failed:", err);
+        console.warn("[history-agg] fetch failed:", err);
         setError(String(err));
         setRows([]);
       })
       .finally(() => setLoading(false));
 
     return () => controller.abort();
-  }, [selectedCn, rangeMode, customFrom, customTo, refreshTick]);
+  }, [selectedFmId, rangeMode, customFrom, customTo, refreshTick]);
 
+  // Filter jam-of-day (HH:MM) — sama seperti HistoryPage
   const hourFilteredRows = useMemo(() => {
     if (!hourFrom && !hourTo) return rows;
     const parseHm = (s: string): number | null => {
@@ -158,7 +191,7 @@ export default function HistoryFcbaPage() {
     const toMin = hourTo ? parseHm(hourTo) : 24 * 60 - 1;
     if (fromMin === null || toMin === null) return rows;
     return rows.filter((r) => {
-      const dt = r.dateTime ?? "";
+      const dt = r.datetime ?? "";
       const hm = dt.slice(11, 16);
       const cur = parseHm(hm);
       if (cur === null) return false;
@@ -167,88 +200,104 @@ export default function HistoryFcbaPage() {
     });
   }, [rows, hourFrom, hourTo]);
 
-  const rowsWithDelta: FcbaRowWithDelta[] = useMemo(() => {
-    return hourFilteredRows.map((r, i) => {
-      const next = hourFilteredRows[i + 1];
-      const delta =
-        next &&
-        typeof next.totalFuelConsum === "number" &&
-        typeof r.totalFuelConsum === "number"
-          ? r.totalFuelConsum - next.totalFuelConsum
+  // Aggregate ke bucket per windowSec.
+  // Input rows newest-first → kelompokkan by Math.floor(ts / (windowSec*1000)).
+  // Untuk tiap bucket: startAt = oldest row, endAt = newest row.
+  // Sisi output diurut newest-first (bucket paling baru di atas).
+  const bucketRows = useMemo<AggBucket[]>(() => {
+    if (windowSec <= 0 || hourFilteredRows.length === 0) return [];
+    const winMs = windowSec * 1000;
+    const buckets = new Map<number, FlowMeterPayload[]>();
+    for (const r of hourFilteredRows) {
+      const ts = parseWibMs(r.datetime);
+      if (!Number.isFinite(ts)) continue;
+      const key = Math.floor(ts / winMs);
+      const arr = buckets.get(key);
+      if (arr) arr.push(r);
+      else buckets.set(key, [r]);
+    }
+    const keys = Array.from(buckets.keys()).sort((a, b) => b - a);
+    return keys.map((key) => {
+      const group = buckets.get(key)!;
+      // Group ordering: input newest-first; sort asc for start/end determinism
+      const asc = [...group].sort(
+        (a, b) => parseWibMs(a.datetime) - parseWibMs(b.datetime),
+      );
+      const first = asc[0];
+      const last = asc[asc.length - 1];
+      const flowRates = asc
+        .map((r) => r.flow_rate)
+        .filter(
+          (v): v is number => typeof v === "number" && Number.isFinite(v),
+        );
+      const avgFlow =
+        flowRates.length > 0
+          ? flowRates.reduce((s, v) => s + v, 0) / flowRates.length
           : null;
-      return { ...r, _fuelDelta: delta };
+      return {
+        bucketKey: key,
+        startAt: first.datetime ?? "",
+        endAt: last.datetime ?? "",
+        startTotal: first.totalisator,
+        endTotal: last.totalisator,
+        delta: last.totalisator - first.totalisator,
+        rowCount: asc.length,
+        avgFlowRate: avgFlow,
+        fmId: last.fm_id,
+        slocn: last.slocn ?? "",
+        plantId: last.plant_id ?? "",
+      };
     });
-  }, [hourFilteredRows]);
+  }, [hourFilteredRows, windowSec]);
 
   const summary = useMemo(() => {
-    if (hourFilteredRows.length === 0) return null;
-    const newest = hourFilteredRows[0];
-    const oldest = hourFilteredRows[hourFilteredRows.length - 1];
-    const nT =
-      typeof newest.totalFuelConsum === "number" ? newest.totalFuelConsum : null;
-    const oT =
-      typeof oldest.totalFuelConsum === "number" ? oldest.totalFuelConsum : null;
-    const totalDelta = nT !== null && oT !== null ? nT - oT : null;
+    if (bucketRows.length === 0) return null;
+    const newest = bucketRows[0];
+    const oldest = bucketRows[bucketRows.length - 1];
+    const totalDelta = newest.endTotal - oldest.startTotal;
     return {
-      count: hourFilteredRows.length,
-      startAt: oldest.dateTime,
-      endAt: newest.dateTime,
-      startTotal: oT,
-      endTotal: nT,
+      buckets: bucketRows.length,
+      startAt: oldest.startAt,
+      endAt: newest.endAt,
+      startTotal: oldest.startTotal,
+      endTotal: newest.endTotal,
       totalDelta,
+      rawRows: hourFilteredRows.length,
     };
-  }, [hourFilteredRows]);
+  }, [bucketRows, hourFilteredRows.length]);
 
   const handleExportCsv = useCallback(() => {
-    if (rowsWithDelta.length === 0) return;
+    if (bucketRows.length === 0) return;
     const header = [
       "no",
-      "datetime_wib",
-      "cn",
-      "sn",
-      "fuel_level_pct",
-      "fuel_rate_lph",
-      "total_fuel_consum_l",
-      "fuel_delta_l",
-      "total_idle_fuel_l",
-      "engine_rpm",
-      "vehicle_speed_kmh",
-      "total_hm_h",
-      "coolant_temp_c",
-      "oil_pressure_mpa",
-      "actual_payload_t",
-      "load_count",
-      "battery_voltage_v",
-      "lat",
-      "lon",
-      "alt",
-      "received_at",
+      "bucket_start_wib",
+      "bucket_end_wib",
+      "window_seconds",
+      "fm_id",
+      "slocn",
+      "plant_id",
+      "row_count",
+      "start_totalisator",
+      "end_totalisator",
+      "kenaikan",
+      "avg_flow_rate",
     ];
     const lines = [header.join(",")];
-    rowsWithDelta.forEach((r, i) => {
+    bucketRows.forEach((b, i) => {
       lines.push(
         [
           i + 1,
-          r.dateTime,
-          r.cn,
-          r.sn ?? "",
-          r.fuelLevel ?? "",
-          r.fuelRate ?? "",
-          r.totalFuelConsum ?? "",
-          r._fuelDelta ?? "",
-          r.totalIdleFuel ?? "",
-          r.hmEngine1 ?? "",
-          r.vehicleSpeed ?? "",
-          r.totalHmEngine1 ?? "",
-          r.coolantTemperature ?? "",
-          r.oilPressure ?? "",
-          r.actualPayload ?? "",
-          r.loadCount ?? "",
-          r.batteryVoltage ?? "",
-          r.lat ?? "",
-          r.lon ?? "",
-          r.alt ?? "",
-          r.receivedAt ?? "",
+          b.startAt,
+          b.endAt,
+          windowSec,
+          b.fmId,
+          b.slocn,
+          b.plantId,
+          b.rowCount,
+          b.startTotal,
+          b.endTotal,
+          b.delta,
+          b.avgFlowRate ?? "",
         ]
           .map(csvEscape)
           .join(","),
@@ -260,10 +309,10 @@ export default function HistoryFcbaPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `fcba-${selectedCn}-${Date.now()}.csv`;
+    a.download = `flow-meter-agg-${selectedFmId}-${windowSec}s-${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [rowsWithDelta, selectedCn]);
+  }, [bucketRows, selectedFmId, windowSec]);
 
   return (
     <div className="hist-dashboard">
@@ -277,18 +326,17 @@ export default function HistoryFcbaPage() {
               fill="none"
               stroke="#1a56db"
               strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
             >
-              <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2" />
-              <path d="M15 18h5a1 1 0 0 0 1-1v-3.34a1 1 0 0 0-.29-.7l-2.42-2.42a1 1 0 0 0-.7-.29H15" />
-              <circle cx="7" cy="18" r="2" />
-              <circle cx="17" cy="18" r="2" />
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+              <circle cx="18" cy="18" r="3" fill="#1a56db" />
             </svg>
           </div>
           <div>
-            <h1 className="hist-header-title">History Fuel Consumption BA</h1>
-            <p className="hist-header-sub">{COMPANY} · SPT Dashboard</p>
+            <h1 className="hist-header-title">History FM · Aggregated</h1>
+            <p className="hist-header-sub">
+              {COMPANY} · SPT Dashboard · 1 row = agregat per {windowSec}s
+            </p>
           </div>
         </div>
         <div className="hist-header-right">
@@ -303,16 +351,16 @@ export default function HistoryFcbaPage() {
       <section className="hist-filters">
         <div className="hist-filter-row">
           <label className="hist-field">
-            <span className="hist-field-label">HD Unit</span>
+            <span className="hist-field-label">FM</span>
             <select
               className="hist-select"
-              value={selectedCn}
-              onChange={(e) => setSelectedCn(e.target.value)}
+              value={selectedFmId}
+              onChange={(e) => setSelectedFmId(e.target.value)}
             >
-              {cns.length === 0 && <option value="">(no HD units)</option>}
-              {cns.map((cn) => (
-                <option key={cn} value={cn}>
-                  {cn}
+              {fmIds.length === 0 && <option value="">(no FM units)</option>}
+              {fmIds.map((id) => (
+                <option key={id} value={id}>
+                  {id}
                 </option>
               ))}
             </select>
@@ -321,20 +369,20 @@ export default function HistoryFcbaPage() {
           <div className="hist-field">
             <span className="hist-field-label">Range</span>
             <div className="hist-pills">
-              {(
-                ["live", "1h", "6h", "24h", "7d", "custom"] as RangeMode[]
-              ).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  className={`hist-pill${
-                    rangeMode === m ? " hist-pill-active" : ""
-                  }`}
-                  onClick={() => setRangeMode(m)}
-                >
-                  {m === "live" ? "Live" : m}
-                </button>
-              ))}
+              {(["live", "1h", "6h", "24h", "7d", "custom"] as RangeMode[]).map(
+                (m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`hist-pill${
+                      rangeMode === m ? " hist-pill-active" : ""
+                    }`}
+                    onClick={() => setRangeMode(m)}
+                  >
+                    {m === "live" ? "Live" : m}
+                  </button>
+                ),
+              )}
             </div>
           </div>
 
@@ -394,6 +442,41 @@ export default function HistoryFcbaPage() {
             )}
           </div>
 
+          <div className="hist-custom">
+            <label className="hist-field">
+              <span className="hist-field-label">Window (detik)</span>
+              <div className="hist-pills">
+                {WINDOW_PRESETS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className={`hist-pill${
+                      windowSec === s ? " hist-pill-active" : ""
+                    }`}
+                    onClick={() => setWindowSec(s)}
+                  >
+                    {s < 60 ? `${s}s` : `${s / 60}m`}
+                  </button>
+                ))}
+              </div>
+            </label>
+            <label className="hist-field">
+              <span className="hist-field-label">Custom</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                className="hist-input"
+                style={{ width: 90 }}
+                value={windowSec}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (Number.isFinite(v) && v >= 1) setWindowSec(Math.floor(v));
+                }}
+              />
+            </label>
+          </div>
+
           <div className="hist-actions">
             <button
               type="button"
@@ -407,7 +490,7 @@ export default function HistoryFcbaPage() {
               type="button"
               className="hist-btn hist-btn-primary"
               onClick={handleExportCsv}
-              disabled={rowsWithDelta.length === 0}
+              disabled={bucketRows.length === 0}
             >
               Export CSV
             </button>
@@ -423,40 +506,34 @@ export default function HistoryFcbaPage() {
             <div className="hist-summary-label">Total Kenaikan</div>
             <div
               className={`hist-summary-value hist-summary-delta${
-                summary.totalDelta !== null && summary.totalDelta > 0
-                  ? " hist-delta-pos"
-                  : ""
+                summary.totalDelta > 0 ? " hist-delta-pos" : ""
               }`}
             >
-              {summary.totalDelta === null
-                ? "—"
-                : (summary.totalDelta > 0 ? "+" : "") +
-                  fmt(summary.totalDelta) +
-                  " L"}
+              {(summary.totalDelta > 0 ? "+" : "") +
+                fmt(summary.totalDelta) +
+                " L"}
             </div>
           </div>
           <div className="hist-summary-item">
             <div className="hist-summary-label">Start (L)</div>
             <div className="hist-summary-value">
-              {summary.startTotal === null ? "—" : fmt(summary.startTotal) + " L"}
+              {fmt(summary.startTotal)} L
             </div>
             <div className="hist-summary-sub">{summary.startAt}</div>
           </div>
           <div className="hist-summary-item">
             <div className="hist-summary-label">End (L)</div>
             <div className="hist-summary-value">
-              {summary.endTotal === null ? "—" : fmt(summary.endTotal) + " L"}
+              {fmt(summary.endTotal)} L
             </div>
             <div className="hist-summary-sub">{summary.endAt}</div>
           </div>
           <div className="hist-summary-item">
-            <div className="hist-summary-label">Data Points</div>
-            <div className="hist-summary-value">{summary.count}</div>
-            {(hourFrom || hourTo) && (
-              <div className="hist-summary-sub">
-                Jam window: {hourFrom || "00:00"} – {hourTo || "23:59"}
-              </div>
-            )}
+            <div className="hist-summary-label">Buckets / Raw Rows</div>
+            <div className="hist-summary-value">
+              {summary.buckets} / {summary.rawRows}
+            </div>
+            <div className="hist-summary-sub">Window {windowSec}s</div>
           </div>
         </section>
       )}
@@ -467,103 +544,51 @@ export default function HistoryFcbaPage() {
             <thead>
               <tr>
                 <th className="hist-num">#</th>
-                <th>Datetime (WIB)</th>
-                <th>Type</th>
-                <th>CN</th>
-                <th>SN</th>
-                <th className="hist-num">Fuel Level (%)</th>
-                <th className="hist-num">Fuel Rate (L/h)</th>
-                <th className="hist-num">Total Consum (L)</th>
+                <th>Bucket Start (WIB)</th>
+                <th>Bucket End (WIB)</th>
+                <th className="hist-num">Rows</th>
+                <th>FM ID</th>
+                <th>Sloc</th>
+                <th className="hist-num">Start (L)</th>
+                <th className="hist-num">End (L)</th>
                 <th className="hist-num">Kenaikan (L)</th>
-                <th className="hist-num">Idle Fuel (L)</th>
-                <th className="hist-num">RPM</th>
-                <th className="hist-num">Speed (km/h)</th>
-                <th className="hist-num">Total HM (h)</th>
-                <th className="hist-num">Coolant (°C)</th>
-                <th className="hist-num">Payload (t)</th>
-                <th className="hist-num">Load Count</th>
-                <th className="hist-num">Batt (V)</th>
-                <th>GPS</th>
-                <th>Received (WIB)</th>
+                <th className="hist-num">Avg Flow Rate</th>
               </tr>
             </thead>
             <tbody>
-              {rowsWithDelta.length === 0 ? (
+              {bucketRows.length === 0 ? (
                 <tr>
-                  <td colSpan={19} className="hist-empty">
-                    {loading ? "Loading…" : "Belum ada data untuk range ini"}
+                  <td colSpan={10} className="hist-empty">
+                    {loading
+                      ? "Loading…"
+                      : "Belum ada data untuk range ini"}
                   </td>
                 </tr>
               ) : (
-                rowsWithDelta.map((r, i) => (
-                  <tr key={`${r.cn}-${r.dateTime}-${i}`}>
+                bucketRows.map((b, i) => (
+                  <tr key={`${b.fmId}-${b.bucketKey}`}>
                     <td className="hist-num hist-mono">{i + 1}</td>
-                    <td className="hist-mono">{r.dateTime}</td>
                     <td className="hist-mono">
-                      {r.deviceType ? (
-                        <span
-                          className={`hist-type-badge hist-type-${r.deviceType}`}
-                        >
-                          {String(r.deviceType).toUpperCase()}
-                        </span>
-                      ) : "—"}
+                      {b.startAt || fmtWib(b.bucketKey * windowSec * 1000)}
                     </td>
-                    <td className="hist-mono">{r.cn}</td>
-                    <td className="hist-mono">{r.sn ?? "—"}</td>
-                    <td className="hist-num hist-mono">{fmt(r.fuelLevel, 1)}</td>
-                    <td className="hist-num hist-mono">{fmt(r.fuelRate, 2)}</td>
+                    <td className="hist-mono">{b.endAt}</td>
+                    <td className="hist-num hist-mono">{b.rowCount}</td>
+                    <td className="hist-mono">{b.fmId}</td>
+                    <td className="hist-mono">{b.slocn || "—"}</td>
                     <td className="hist-num hist-mono">
-                      {fmt(r.totalFuelConsum, 2)}
+                      {fmt(b.startTotal)}
                     </td>
+                    <td className="hist-num hist-mono">{fmt(b.endTotal)}</td>
                     <td
                       className={`hist-num hist-mono${
-                        r._fuelDelta && r._fuelDelta > 0
-                          ? " hist-delta-pos"
-                          : ""
+                        b.delta > 0 ? " hist-delta-pos" : ""
                       }`}
                     >
-                      {r._fuelDelta === null
-                        ? "—"
-                        : (r._fuelDelta > 0 ? "+" : "") +
-                          fmt(r._fuelDelta, 2)}
+                      {(b.delta > 0 ? "+" : "") + fmt(b.delta)}
                     </td>
                     <td className="hist-num hist-mono">
-                      {fmt(r.totalIdleFuel, 2)}
+                      {b.avgFlowRate === null ? "—" : fmt(b.avgFlowRate)}
                     </td>
-                    <td className="hist-num hist-mono">
-                      {r.hmEngine1 !== null && r.hmEngine1 !== undefined
-                        ? fmt(r.hmEngine1, 0)
-                        : "—"}
-                    </td>
-                    <td className="hist-num hist-mono">
-                      {fmt(r.vehicleSpeed, 1)}
-                    </td>
-                    <td className="hist-num hist-mono">
-                      {fmt(r.totalHmEngine1, 1)}
-                    </td>
-                    <td className="hist-num hist-mono">
-                      {fmt(r.coolantTemperature, 1)}
-                    </td>
-                    <td className="hist-num hist-mono">
-                      {fmt(r.actualPayload, 1)}
-                    </td>
-                    <td className="hist-num hist-mono">
-                      {r.loadCount !== null && r.loadCount !== undefined
-                        ? fmt(r.loadCount, 0)
-                        : "—"}
-                    </td>
-                    <td className="hist-num hist-mono">
-                      {fmt(r.batteryVoltage, 1)}
-                    </td>
-                    <td className="hist-mono">
-                      {r.lat !== null &&
-                      r.lat !== undefined &&
-                      r.lon !== null &&
-                      r.lon !== undefined
-                        ? `${fmt(r.lat, 4)}, ${fmt(r.lon, 4)}`
-                        : "—"}
-                    </td>
-                    <td className="hist-mono">{r.receivedAt ?? "—"}</td>
                   </tr>
                 ))
               )}
@@ -574,8 +599,9 @@ export default function HistoryFcbaPage() {
 
       <footer className="hist-footer">
         <span>
-          Rows: <code>{hourFilteredRows.length}</code>
-          {(hourFrom || hourTo) && rows.length !== hourFilteredRows.length && (
+          Buckets: <code>{bucketRows.length}</code> · Raw:{" "}
+          <code>{hourFilteredRows.length}</code>
+          {rows.length !== hourFilteredRows.length && (
             <> / {rows.length} (jam filter aktif)</>
           )}
         </span>

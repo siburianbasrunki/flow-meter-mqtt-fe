@@ -233,6 +233,16 @@
   border-radius: 50%;
   box-shadow: 0 0 4px var(--scada-green);
 }
+.fm-list-led-stale {
+  background: var(--scada-dim, #94a3b8);
+  box-shadow: none;
+}
+.fm-list-item-stale {
+  opacity: 0.72;
+}
+.fm-list-item-stale .fm-list-id {
+  color: var(--scada-dim, #94a3b8);
+}
 .fm-list-meta {
   display: flex;
   justify-content: space-between;
