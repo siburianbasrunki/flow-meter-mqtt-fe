@@ -65,7 +65,7 @@ interface AggBucket {
   endAt: string;
   startTotal: number;
   endTotal: number;
-  delta: number;
+  delta: number | null;
   rowCount: number;
   avgFlowRate: number | null;
   fmId: string;
@@ -235,10 +235,10 @@ export default function HistoryAggregatedPage() {
       if (arr) arr.push(r);
       else buckets.set(key, [r]);
     }
+    // Newest bucket paling atas (index 0), paling lama di paling bawah.
     const keys = Array.from(buckets.keys()).sort((a, b) => b - a);
-    return keys.map((key) => {
+    const raw = keys.map((key) => {
       const group = buckets.get(key)!;
-      // Group ordering: input newest-first; sort asc for start/end determinism
       const asc = [...group].sort(
         (a, b) => parseWibMs(a.datetime) - parseWibMs(b.datetime),
       );
@@ -255,16 +255,34 @@ export default function HistoryAggregatedPage() {
           : null;
       return {
         bucketKey: key,
-        startAt: first.datetime ?? "",
-        endAt: last.datetime ?? "",
-        startTotal: first.totalisator,
-        endTotal: last.totalisator,
-        delta: last.totalisator - first.totalisator,
+        first,
+        last,
+        avgFlow,
         rowCount: asc.length,
-        avgFlowRate: avgFlow,
-        fmId: last.fm_id,
-        slocn: last.slocn ?? "",
-        plantId: last.plant_id ?? "",
+      };
+    });
+
+    // Kenaikan per bucket = endTotal current - endTotal bucket sebelumnya
+    // (bucket "sebelumnya" = index +1 di list newest-first). Bucket paling
+    // lama (index terakhir) delta=null karena gak ada bucket sebelumnya.
+    return raw.map((b, i) => {
+      const prev = raw[i + 1];
+      const delta =
+        prev && Number.isFinite(prev.last.totalisator)
+          ? b.last.totalisator - prev.last.totalisator
+          : null;
+      return {
+        bucketKey: b.bucketKey,
+        startAt: b.first.datetime ?? "",
+        endAt: b.last.datetime ?? "",
+        startTotal: b.first.totalisator,
+        endTotal: b.last.totalisator,
+        delta,
+        rowCount: b.rowCount,
+        avgFlowRate: b.avgFlow,
+        fmId: b.last.fm_id,
+        slocn: b.last.slocn ?? "",
+        plantId: b.last.plant_id ?? "",
       };
     });
   }, [hourFilteredRows, windowSec]);
@@ -273,7 +291,9 @@ export default function HistoryAggregatedPage() {
     if (bucketRows.length === 0) return null;
     const newest = bucketRows[0];
     const oldest = bucketRows[bucketRows.length - 1];
-    const totalDelta = newest.endTotal - oldest.startTotal;
+    // Total kenaikan = endTotal terbaru - endTotal terlama.
+    // Konsisten dgn sum(bucket.delta) karena telescoping.
+    const totalDelta = newest.endTotal - oldest.endTotal;
     return {
       buckets: bucketRows.length,
       startAt: oldest.startAt,
@@ -315,7 +335,7 @@ export default function HistoryAggregatedPage() {
           b.rowCount,
           b.startTotal,
           b.endTotal,
-          b.delta,
+          b.delta ?? "",
           b.avgFlowRate ?? "",
         ]
           .map(csvEscape)
@@ -602,10 +622,14 @@ export default function HistoryAggregatedPage() {
                     <td className="hist-num hist-mono">{fmt(b.endTotal)}</td>
                     <td
                       className={`hist-num hist-mono${
-                        b.delta > 0 ? " hist-delta-pos" : ""
+                        b.delta !== null && b.delta > 0
+                          ? " hist-delta-pos"
+                          : ""
                       }`}
                     >
-                      {(b.delta > 0 ? "+" : "") + fmt(b.delta)}
+                      {b.delta === null
+                        ? "—"
+                        : (b.delta > 0 ? "+" : "") + fmt(b.delta)}
                     </td>
                     <td className="hist-num hist-mono">
                       {b.avgFlowRate === null ? "—" : fmt(b.avgFlowRate)}
