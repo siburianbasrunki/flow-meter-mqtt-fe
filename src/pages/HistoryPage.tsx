@@ -44,8 +44,13 @@ function csvEscape(v: unknown): string {
   return s;
 }
 
+interface FmOption {
+  fmId: string;
+  slocn: string;
+}
+
 export default function HistoryPage() {
-  const [fmIds, setFmIds] = useState<string[]>([]);
+  const [fmOptions, setFmOptions] = useState<FmOption[]>([]);
   const [selectedFmId, setSelectedFmId] = useState<string>("");
   const [rangeMode, setRangeMode] = useState<RangeMode>("24h");
   const [customFrom, setCustomFrom] = useState<string>(() =>
@@ -68,14 +73,33 @@ export default function HistoryPage() {
   useEffect(() => {
     fetch(`${API_URL}/iot/flow-meter/latest`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
-      .then((body: { data: { fm_id?: string }[] }) => {
-        const list = Array.isArray(body.data)
-          ? body.data.map((r) => r.fm_id ?? "").filter((s) => s.length > 0)
-          : [];
-        const unique = Array.from(new Set(list)).sort();
-        setFmIds(unique);
-        setSelectedFmId((prev) => prev || unique[0] || "");
-      })
+      .then(
+        (body: {
+          data: { fm_id?: string; slocn?: string | null }[];
+        }) => {
+          const opts: FmOption[] = Array.isArray(body.data)
+            ? body.data
+                .filter((r): r is { fm_id: string; slocn?: string | null } =>
+                  Boolean(r.fm_id),
+                )
+                .map((r) => ({ fmId: r.fm_id, slocn: r.slocn ?? "" }))
+            : [];
+          // Dedupe by fmId, keep first slocn seen
+          const seen = new Set<string>();
+          const unique: FmOption[] = [];
+          for (const o of opts) {
+            if (!seen.has(o.fmId)) {
+              seen.add(o.fmId);
+              unique.push(o);
+            }
+          }
+          unique.sort((a, b) =>
+            (a.slocn || a.fmId).localeCompare(b.slocn || b.fmId),
+          );
+          setFmOptions(unique);
+          setSelectedFmId((prev) => prev || unique[0]?.fmId || "");
+        },
+      )
       .catch((err) => {
         console.warn("[history] latest fetch failed:", err);
       });
@@ -295,10 +319,12 @@ export default function HistoryPage() {
               value={selectedFmId}
               onChange={(e) => setSelectedFmId(e.target.value)}
             >
-              {fmIds.length === 0 && <option value="">(no FM units)</option>}
-              {fmIds.map((id) => (
-                <option key={id} value={id}>
-                  {id}
+              {fmOptions.length === 0 && (
+                <option value="">(no FM units)</option>
+              )}
+              {fmOptions.map((o) => (
+                <option key={o.fmId} value={o.fmId}>
+                  {o.slocn ? `${o.slocn} · ${o.fmId}` : o.fmId}
                 </option>
               ))}
             </select>
